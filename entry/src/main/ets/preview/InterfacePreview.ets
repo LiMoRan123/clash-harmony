@@ -4,6 +4,8 @@ import { HomeConnectionCard, HomeTrafficCard } from '../components/HomeRuntimeCa
 import { AppNavigationBar } from '../components/AppNavigationBar';
 import { ProfileListCard, ProfileUpdateBanner } from '../components/ProfileCards';
 import { ConnectionViewState, TrafficViewState } from '../models/HomeViewState';
+import { HomeNetworkViewState } from '../models/HomeNetworkViewState';
+import { HomeServiceCard } from '../components/HomeOverviewCards';
 import { ProfileUpdateViewState } from '../models/ProfileUpdateViewState';
 import { ClashProfile } from '../models/Profile';
 import { AppTheme } from '../theme/AppTheme';
@@ -13,12 +15,23 @@ import { AppTheme } from '../theme/AppTheme';
 struct RuntimeCardsPreview {
   @State private connection: ConnectionViewState = new ConnectionViewState();
   @State private traffic: TrafficViewState = new TrafficViewState();
+  @State private network: HomeNetworkViewState = new HomeNetworkViewState();
 
   aboutToAppear(): void {
     this.connection.connected = true;
     this.connection.setPhase('connected', '已连接');
     this.traffic.uptime = '00:12:36';
     this.traffic.connections = 8;
+    this.network.exitIp = '203.0.113.42';
+    this.network.exitMessage = '出口 IP · 自动检测';
+    this.network.checkedAt = 1700000000000;
+    this.network.services = [
+      { key: 'google', name: 'Google', status: 'available', delay: 178, code: 204 },
+      { key: 'github', name: 'GitHub', status: 'available', delay: 301, code: 200 },
+      { key: 'youtube', name: 'YouTube', status: 'available', delay: 277, code: 204 },
+      { key: 'chatgpt', name: 'ChatGPT', status: 'restricted', delay: 308, code: 403 }
+    ];
+    this.traffic.recordTotals(512 * 1024 * 1024, 32 * 1024 * 1024, 1024 * 1024, 32768);
     this.traffic.uploadSpeed = '24.8 KB/s';
     this.traffic.downloadSpeed = '1.2 MB/s';
     this.traffic.uploadHistory = [0, 8192, 4096, 16384, 12288, 8192, 4096, 8192, 16384, 24576, 8192, 4096];
@@ -31,12 +44,28 @@ struct RuntimeCardsPreview {
         .width('100%').height(64).padding({ left: 16, right: 16 })
       Scroll() {
         Column({ space: 12 }) {
-          HomeConnectionCard({ connection: this.connection, traffic: this.traffic })
+          HomeConnectionCard({ connection: this.connection, traffic: this.traffic, network: this.network })
           HomeTrafficCard({ traffic: this.traffic })
+          HomeServiceCard({ network: this.network, connected: true })
         }.width('100%').padding(16)
       }.layoutWeight(1).width('100%').align(Alignment.Top)
       AppNavigationBar({ selected: 'home' })
     }.width('100%').height('100%').backgroundColor(AppTheme.background)
+  }
+}
+
+@Preview({ title: '未连接 · 360', width: 360, height: 600 })
+@Component
+struct DisconnectedRuntimePreview {
+  @State private connection: ConnectionViewState = new ConnectionViewState();
+  @State private traffic: TrafficViewState = new TrafficViewState();
+  @State private network: HomeNetworkViewState = new HomeNetworkViewState();
+
+  build() {
+    Column({ space: 12 }) {
+      HomeConnectionCard({ connection: this.connection, traffic: this.traffic, network: this.network })
+      HomeTrafficCard({ traffic: this.traffic })
+    }.width('100%').padding(16).backgroundColor(AppTheme.background)
   }
 }
 

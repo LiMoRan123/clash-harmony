@@ -214,6 +214,8 @@ function makeUi() {
     waitForVpnTunReady: async () => ({ ready: true }),
     refreshControllerProxies: async () => {}, refreshConnections: async () => {},
     syncHomeRuntimeFields() {}, createLiveSummary: () => ({ state: 'running' }),
+    resetHomeTrafficBaseline() {},
+    refreshHomeNetwork() { this.networkProbeStarts = (this.networkProbeStarts ?? 0) + 1; },
     startRuntimePolling() { this.streamStarts = (this.streamStarts ?? 0) + 1; }
   });
 }
@@ -229,10 +231,12 @@ controllerAvailable = true;
 const noRoute = makeUi();
 await noRoute.resumeRuntimeIfControllerAvailable();
 assert.equal(noRoute.vpnTunnelActive, false, 'a controller and its cached TUN configuration are insufficient when the system route is gone');
+assert.equal(noRoute.networkProbeStarts, undefined, 'controller-only mode must not trigger automatic exit probes');
 visibleSystemVpn = true;
 const resumed = makeUi();
 await resumed.resumeRuntimeIfControllerAvailable();
 assert.equal(resumed.streamStarts, 1, 'foreground reconciliation recovers the live data channel');
+assert.equal(resumed.networkProbeStarts, 1, 'recovered VPN sessions request automatic exit and service checks');
 const staleUi = makeUi();
 staleUi.refreshControllerProxies = () => new Promise(resolve => { finishMetadata = resolve; });
 const metadataRefresh = staleUi.resumeRuntimeIfControllerAvailable();

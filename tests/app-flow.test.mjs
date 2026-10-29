@@ -64,7 +64,7 @@ assert.match(indexSource, /Math\.max\(0, totalDownload - this\.homeLastDownloadT
 assert.doesNotMatch(indexSource, /liveRefreshToken|homeRefreshIntervalId|setInterval/);
 assert.match(indexSource, /this\.connectionView\.setPhase/);
 assert.match(indexSource, /this\.ProxyModeOption\('规则', 'rule'\)/);
-assert.match(indexSource, /Text\(this\.liveProfileName\)/);
+assert.match(indexSource, /HomeProfileCard\(\{ profile: this\.homeProfile\(\)/);
 assert.match(indexSource, /Text\(this\.liveProxyName\)/);
 assert.match(indexSource, /APP_VERSION_NAME: string = 'v0\.1\.0'/);
 assert.match(indexSource, /DELAY_TEST_TIMEOUT_MS: number = 4500/);

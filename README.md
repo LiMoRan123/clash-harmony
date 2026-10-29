@@ -12,7 +12,7 @@
 
 | 页面 | 已实现能力 |
 | --- | --- |
-| 仪表盘 | VPN 启停与阶段反馈、运行时长、活跃连接数、实时上传/下载速度与趋势、规则/全局/直连模式、当前配置与代理策略、手动查询出口 IP |
+| 仪表盘 | 播放/暂停式 VPN 启停与阶段反馈、自动检测出口 IP、运行时长与连接数、上传/下载速度及累计/峰值/趋势、配置额度与到期、代理策略、服务连通状态、规则/全局/直连模式 |
 | 代理 | 策略组与节点选择、搜索、原顺序/名称/延迟排序、单列/双列布局、同步运行中的策略组、节点延迟测试及进度 |
 | 配置 | 订阅链接、剪贴板及本地文件导入，单个/批量更新，加载动画、逐项结果与失败重试，启用、编辑、导出和删除 |
 | 工具 | 活跃连接、分流规则、DNS 配置、应用运行日志及导出，外观、网络和延迟测试设置，完整备份与恢复、关于信息 |
@@ -34,6 +34,7 @@
 - 运行数据使用 mihomo WebSocket 连接快照推送，替代首页 HTTP 定时轮询；订阅下载、策略操作、启动探测和恢复状态仍按需使用 HTTP。
 - 原生内核启停通过异步 NAPI 工作任务执行，避免在界面线程同步等待 Go 内核。
 - 接入后台数据传输任务、会话核对和停止确认，并记录任务取消及运行异常，方便排查后台断开。
+- 连接成功并恢复节点选择后，自动检测出口 IP 和 Google / GitHub / YouTube / ChatGPT 连通状态；切换节点或模式后重新检测，也可手动刷新。这是单次检测，不增加持续轮询。
 
 实现与验证范围见 [状态推送与性能](doc/runtime-push-and-performance.md)、[后台运行](doc/background-stability.md) 和 [停止流程](doc/vpn-disconnect.md)。
 
@@ -159,7 +160,7 @@ HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/
   --evidence-dir artifacts/mihomo-device
 ```
 
-2026-10-29 的功能整理已通过 11 组 `*.test.mjs` 回归、HarmonyOS debug 签名构建、ARM64 HAP 内容和内核打包检查。用户真机反馈已验证订阅更新、显示节点及基本 VPN 访问；这些结果不代表所有设备兼容性、长期后台稳定性或耗电均已验证。
+2026-10-29 的功能整理及首页增强已通过 12 组 `*.test.mjs` 回归、HarmonyOS debug 签名构建、ARM64 HAP 内容和内核打包检查。此前用户真机反馈已验证订阅更新、显示节点及基本 VPN 访问；本轮首页布局仍需安装后验收，这些结果也不代表所有设备兼容性、长期后台稳定性或耗电均已验证。
 
 ## 当前边界
 
@@ -176,6 +177,7 @@ HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/
 | --- | --- |
 | [独立维护与分支约定](doc/independent-maintenance.md) | 仓库来源、解绑记录与 dev / main 工作流 |
 | [界面改造](doc/ui-redesign.md)、[界面细化](doc/ui-polish.md) | 原生页面、加载反馈、图标测速和配置页布局 |
+| [首页状态与信息增强](doc/home-dashboard.md) | 播放/暂停按钮、自动出口检测、服务状态和流量概览 |
 | [订阅兼容](doc/subscription-compatibility.md) | 订阅格式、解析和导入修复 |
 | [订阅流量与到期](doc/subscription-info.md) | 账号统计来源、缓存、展示与验证 |
 | [状态推送与性能](doc/runtime-push-and-performance.md) | 状态拆分、生命周期事件、WebSocket 与异步 NAPI |

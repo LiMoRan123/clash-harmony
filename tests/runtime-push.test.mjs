@@ -146,6 +146,7 @@ const ui = new Ui();
 let postChecks = 0;
 Object.assign(ui, {
   connectionView: new Connection(), trafficView: new Traffic(),
+  homeNetwork: {}, homeNetworkMonitor: { disconnect() {} }, refreshHomeNetwork() {},
   profileState: { currentUid: 'p' }, summary: { state: 'stopped' },
   eventsReady: Promise.resolve(true), proxyMode: 'rule',
   selectedProxyGroup: '', pendingProxyGroup: '', pendingProxyName: '',

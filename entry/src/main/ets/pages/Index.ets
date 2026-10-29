@@ -4,8 +4,10 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { promptAction } from '@kit.ArkUI';
 import { AppTheme } from '../theme/AppTheme';
 import { ConnectionViewState, TrafficViewState } from '../models/HomeViewState';
+import { HomeNetworkViewState } from '../models/HomeNetworkViewState';
 import { ProfileUpdateViewState } from '../models/ProfileUpdateViewState';
 import { HomeConnectionCard, HomeTrafficCard } from '../components/HomeRuntimeCards';
+import { HomeProfileCard, HomeServiceCard } from '../components/HomeOverviewCards';
 import { AppNavigationBar } from '../components/AppNavigationBar';
 import { ProfileListCard, ProfileUpdateBanner } from '../components/ProfileCards';
 import { ControllerStreamService } from '../services/ControllerStreamService';
@@ -16,7 +18,7 @@ import { RuntimeDiagnostics } from '../services/RuntimeDiagnostics';
 import { AppPreferences, AppPreferencesService, defaultAppPreferences } from '../services/AppPreferencesService';
 import { DocumentExportService } from '../services/DocumentExportService';
 import { AppBackupService } from '../services/AppBackupService';
-import { NetworkProbeService } from '../services/NetworkProbeService';
+import { HomeNetworkMonitorService } from '../services/HomeNetworkMonitorService';
 import { GenericSubscriptionConverterService } from '../services/GenericSubscriptionConverterService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ClashConfigParserService, ParsedConfigSummary, ParsedProxyNode } from '../services/ClashConfigParserService';
@@ -153,8 +155,8 @@ struct Index {
   @State private editorText: string = '';
   @State private editorSaving: boolean = false;
   @State private advancedDiagnostics: boolean = false;
-  @State private exitIp: string = '';
-  @State private checkingExit: boolean = false;
+  @State private homeNetwork: HomeNetworkViewState = new HomeNetworkViewState();
+  private homeNetworkMonitor: HomeNetworkMonitorService = new HomeNetworkMonitorService();
   @State private profileState: ProfileState = createEmptyProfileState();
   @State private profileUpdate: ProfileUpdateViewState = new ProfileUpdateViewState();
   @State private profileMutationBusy: boolean = false;
@@ -247,6 +249,7 @@ struct Index {
     VpnRuntimeEvents.unsubscribe();
     TrafficPollerService.stop();
     this.stopHomeRefreshLoop();
+    this.homeNetworkMonitor.disconnect(this.homeNetwork);
   }
 
   onBackPress(): boolean {
@@ -346,6 +349,7 @@ struct Index {
         this.statusMessage = 'VPN 已连接';
         this.syncHomeRuntimeFields();
         this.startRuntimePolling();
+        this.refreshHomeNetwork();
       }
     } else if (event.phase === 'disconnected') {
       VpnBackgroundService.setEnabled(false);
@@ -354,6 +358,7 @@ struct Index {
         this.stopHomeRefreshLoop();
         this.vpnTunnelActive = false;
         this.connectedAt = 0;
+        this.resetHomeTrafficBaseline();
         this.clearProxyHealthState();
         this.summary = CoreService.createSummary(this.profileState, false);
         this.vpnActionText = '连接';
@@ -378,9 +383,11 @@ struct Index {
       if (generation !== this.homeRefreshGeneration || !this.isRuntimeConnected()) { return }
       await this.restoreProxySelection(group, node);
       if (generation !== this.homeRefreshGeneration || !this.isRuntimeConnected()) { return }
+      this.refreshHomeNetwork();
       await this.verifySelectedProxyAfterConnection(version);
     } catch (err) {
       if (generation === this.homeRefreshGeneration && this.isRuntimeConnected()) {
+        this.refreshHomeNetwork();
         this.recordLog('warn', '连接已建立，附加节点检查未完成，可在代理页手动刷新');
       }
     }
@@ -388,7 +395,7 @@ struct Index {
 
   private async toggleVpn(): Promise<void> {
     this.toggling = true;
-    this.exitIp = '';
+    this.homeNetworkMonitor.disconnect(this.homeNetwork);
     hilog.info(LOG_DOMAIN, LOG_TAG, 'toggleVpn: start, state=%{public}s', this.summary.state);
     try {
       if (this.isRuntimeConnected()) {
@@ -404,6 +411,7 @@ struct Index {
           this.recordLog('warn', this.statusMessage);
           this.startHomeRefreshLoop();
           this.syncHomeRuntimeFields();
+          this.refreshHomeNetwork();
           return;
         }
         this.connectedAt = 0;
@@ -430,6 +438,7 @@ struct Index {
         return;
       }
 
+      this.resetHomeTrafficBaseline();
       this.startupStartedAt = Date.now();
       this.sessionId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10);
       this.latestEventSequence = 0;
@@ -665,6 +674,7 @@ struct Index {
       this.vpnTunnelActive = false;
       this.connectedAt = 0;
       this.vpnActionText = '连接';
+      this.resetHomeTrafficBaseline();
       this.summary = CoreService.createSummary(this.profileState, false);
       this.statusMessage = `controller 已连接：${status.version} · VPN 未连接`;
       await this.refreshControllerProxies();
@@ -700,6 +710,7 @@ struct Index {
     await this.refreshConnections();
     if (generation !== this.homeRefreshGeneration || sessionId !== this.sessionId || this.toggling) { return }
     this.syncHomeRuntimeFields();
+    this.refreshHomeNetwork();
   }
 
   private async addRemoteProfile(): Promise<void> {
@@ -1053,6 +1064,7 @@ struct Index {
         connections: this.summary.connections
       };
       this.syncHomeRuntimeFields();
+      this.refreshHomeNetwork(true);
     }
     this.recordLog(ok ? 'info' : 'warn', this.statusMessage);
   }
@@ -1203,7 +1215,6 @@ struct Index {
   }
 
   private async selectProxyNode(node: ProxyNode): Promise<void> {
-    this.exitIp = '';
     const previousName: string = this.getSelectedProxyNodeName();
     this.statusMessage = `正在切换节点：${node.name}`;
     let group: ProxyGroupInfo | undefined = this.findSelectedProxyGroup();
@@ -1259,6 +1270,7 @@ struct Index {
       message: this.controllerStatus.message
     });
     this.syncHomeRuntimeFields();
+    this.refreshHomeNetwork(true);
   }
 
   private markSelectedProxyNode(name: string): void {
@@ -1394,7 +1406,8 @@ struct Index {
       const totalDownload: number = typeof data['downloadTotal'] === 'number' ? data['downloadTotal'] as number : 0;
       const totalUpload: number = typeof data['uploadTotal'] === 'number' ? data['uploadTotal'] as number : 0;
       const connections: Object[] = data['connections'] as Object[];
-      if (!Number.isFinite(totalDownload) || !Number.isFinite(totalUpload) || !Array.isArray(connections)) { return }
+      if (!Number.isFinite(totalDownload) || !Number.isFinite(totalUpload) ||
+        totalDownload < 0 || totalUpload < 0 || !Array.isArray(connections)) { return }
       VpnBackgroundService.updateTraffic(totalDownload, totalUpload);
       const now: number = Date.now();
       const elapsed: number = (now - this.homeLastPollAt) / 1000;
@@ -1416,6 +1429,7 @@ struct Index {
       this.trafficView.uploadSpeed = this.liveUploadSpeed;
       this.trafficView.connections = this.liveConnections;
       this.trafficView.uptime = this.liveUptime;
+      this.trafficView.recordTotals(totalDownload, totalUpload, down, up);
       this.trafficView.downloadHistory = this.trafficView.downloadHistory.slice(1).concat([down]);
       this.trafficView.uploadHistory = this.trafficView.uploadHistory.slice(1).concat([up]);
       this.summary.downloadSpeed = this.liveDownloadSpeed;
@@ -1672,6 +1686,7 @@ struct Index {
 
   private syncHomeRuntimeFields(state?: ProfileState): void {
     const connected: boolean = this.isRuntimeConnected();
+    if (!connected) { this.homeNetworkMonitor.disconnect(this.homeNetwork) }
     this.liveConnected = connected;
     this.liveUptime = connected ? this.summary.uptime : '未连接';
     this.liveDownloadSpeed = connected ? this.summary.downloadSpeed : '0 KB/s';
@@ -1703,6 +1718,7 @@ struct Index {
 
 
   private resetHomeTrafficBaseline(): void {
+    this.trafficView.reset();
     this.homeLastDownloadTotal = 0;
     this.homeLastUploadTotal = 0;
     this.homeLastPollAt = 0;
@@ -1938,6 +1954,8 @@ struct Index {
         this.HomeSpeedCard()
         this.HomeModeCard()
         this.HomeCurrentRouteCard()
+        HomeServiceCard({ network: this.homeNetwork, connected: this.liveConnected,
+          onRefresh: () => { this.checkExitIp() } })
         this.HomeRecentStatusCard()
       }.width('100%').constraintSize({ maxWidth: AppTheme.contentMaxWidth })
         .padding({ left: AppTheme.gutter, right: AppTheme.gutter, top: 8, bottom: 16 })
@@ -1948,7 +1966,7 @@ struct Index {
   private HomeStatusCard() {
     HomeConnectionCard({
       connection: this.connectionView, traffic: this.trafficView,
-      exitIp: this.exitIp, checkingExit: this.checkingExit,
+      network: this.homeNetwork,
       startBlocked: this.profileUpdate.running || this.profileMutationBusy,
       onToggle: () => { this.requestToggleVpn() },
       onCheckExit: () => { this.checkExitIp() }
@@ -1977,44 +1995,33 @@ struct Index {
 
 
 
+  private homeProfile(): ClashProfile {
+    return CoreService.getCurrentProfile(this.profileState) ?? {
+      uid: '', type: 'local', name: '未选择配置', source: '', filePath: '', updatedAt: 0, nodeCount: 0, traffic: ''
+    };
+  }
+
   @Builder
   private HomeCurrentRouteCard() {
-    Row({ space: 12 }) {
+    Column({ space: 12 }) {
+      HomeProfileCard({ profile: this.homeProfile(), onOpen: () => { this.currentTab = 'profiles' } })
       Button({ type: ButtonType.Normal }) {
-        Column({ space: 10 }) {
-          Row() {
-            this.Icon($r('app.media.ui_file'), 20, AppTheme.primary)
-            Blank()
-            this.Icon($r('app.media.ui_chevron'), 16, AppTheme.muted)
-          }.width('100%')
-          Column({ space: 5 }) {
-            Text('当前配置').fontSize(12).fontColor(AppTheme.muted)
-            Text(this.liveProfileName).fontSize(15).fontWeight(FontWeight.Medium).fontColor(AppTheme.text)
-              .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-        }.width('100%').alignItems(HorizontalAlign.Start)
-      }.layoutWeight(1).constraintSize({ minHeight: 116 }).padding(16)
-        .backgroundColor(AppTheme.surface).borderRadius(AppTheme.rowRadius)
-        .accessibilityText('当前配置，' + this.liveProfileName + '，点击切换')
-        .onClick(() => { this.currentTab = 'profiles' })
-      Button({ type: ButtonType.Normal }) {
-        Column({ space: 10 }) {
-          Row() {
-            this.Icon($r('app.media.ui_globe'), 20, AppTheme.primary)
-            Blank()
-            this.Icon($r('app.media.ui_chevron'), 16, AppTheme.muted)
-          }.width('100%')
+        Row({ space: 12 }) {
+          this.Icon($r('app.media.ui_route'), 22, AppTheme.primary)
           Column({ space: 5 }) {
             Text('代理策略').fontSize(12).fontColor(AppTheme.muted)
             Text(this.liveProxyName).fontSize(15).fontWeight(FontWeight.Medium).fontColor(AppTheme.text)
               .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
-          }.alignItems(HorizontalAlign.Start).width('100%')
-        }.width('100%').alignItems(HorizontalAlign.Start)
-      }.layoutWeight(1).constraintSize({ minHeight: 116 }).padding(16)
+            Text(this.proxyGroups.length + ' 个策略组 · ' + this.homeProfile().nodeCount + ' 个节点')
+              .fontSize(12).fontColor(AppTheme.muted).maxLines(2)
+          }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+          this.Icon($r('app.media.ui_chevron'), 18, AppTheme.muted)
+        }.width('100%')
+      }.width('100%').constraintSize({ minHeight: 92 }).padding(16)
         .backgroundColor(AppTheme.surface).borderRadius(AppTheme.rowRadius)
         .accessibilityText('代理策略，' + this.liveProxyName + '，点击切换')
         .onClick(() => { this.currentTab = 'proxies' })
-    }.width('100%').alignItems(VerticalAlign.Top)
+    }.width('100%')
   }
 
   @Builder
@@ -2641,16 +2648,15 @@ struct Index {
 
 
   private async checkExitIp(): Promise<void> {
-    if (!this.liveConnected || this.checkingExit) { return }
-    this.checkingExit = true;
-    try {
-      const ip: string = await NetworkProbeService.exitIp();
-      if (this.liveConnected) { this.exitIp = ip }
-    } catch (err) {
-      this.notify('出口检测失败，请确认当前代理可用后重试');
-    } finally {
-      this.checkingExit = false;
-    }
+    if (!this.isRuntimeConnected()) { return }
+    this.homeNetworkMonitor.connect(this.homeNetwork);
+    await this.homeNetworkMonitor.refresh(this.homeNetwork);
+  }
+
+  private refreshHomeNetwork(force: boolean = false): void {
+    if (!this.isRuntimeConnected()) { return }
+    if (force) { this.homeNetworkMonitor.disconnect(this.homeNetwork) }
+    this.homeNetworkMonitor.connect(this.homeNetwork);
   }
 
   private proxyDisplayMenu(): MenuElement[] {

@@ -185,6 +185,7 @@ function makeUi() {
     isRuntimeConnected() { return this.vpnTunnelActive; },
     stopHomeRefreshLoop() { this.homeRefreshGeneration++; },
     startHomeRefreshLoop() { refreshRestarts++; },
+    homeNetwork: {}, homeNetworkMonitor: { disconnect() {} }, refreshHomeNetwork() {},
     syncHomeRuntimeFields() {}, resetHomeTrafficBaseline() {}, clearProxyHealthState() {},
     clearControllerProxyGroups() {}, recordLog() {},
     homeRefreshGeneration: 0, runtimeConnections: []
