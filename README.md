@@ -1,10 +1,14 @@
-# Clash Harmony
+# 喵连 · MiaoLink
 
-面向 HarmonyOS 的 Clash / mihomo 代理客户端，使用 ArkTS + ArkUI 原生界面，通过 VPN Extension 接入 Go 内核。当前主要在 ARM64 鸿蒙手机上开发和验证。
+**喵连（MiaoLink）** 是面向 HarmonyOS 的 Clash / mihomo 代理客户端，使用 ArkTS + ArkUI 原生界面，通过 VPN Extension 接入 Go 内核。当前主要在 ARM64 鸿蒙手机上开发和验证。
 
-本项目由 [LiMoRan123/clash-harmony](https://github.com/LiMoRan123/clash-harmony) 独立维护，源自 [andycaihello/clash-harmony](https://github.com/andycaihello/clash-harmony)，保留原始提交历史、来源说明和 GPL-3.0-only 许可证。界面布局参考 FlClash 0.9.x，当前功能以本文和实际实现为准。
+项目原名 Clash Harmony，现以「喵连 / MiaoLink」独立维护。当前代码仓库为 [LiMoRan123/clash-harmony](https://github.com/LiMoRan123/clash-harmony)，源自 [andycaihello/clash-harmony](https://github.com/andycaihello/clash-harmony)，保留原始提交历史、来源说明和 GPL-3.0-only 许可证。界面布局参考 FlClash 0.9.x，当前功能以本文和实际实现为准。
 
 > 当前应用版本为 `0.1.0`，功能说明更新于 **2026-10-29**。`release/` 安装包和 `docs/screenshots/` 截图属于早期版本，不代表当前界面与功能；体验当前版本请从源码构建。
+
+<p align="center">
+  <img src="assets/brand/miaolink-icon.svg" width="128" alt="喵连：浅紫猫耳与连接笑脸图标">
+</p>
 
 ## 功能
 
@@ -175,6 +179,7 @@ HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/
 
 | 文档 | 内容 |
 | --- | --- |
+| [品牌与应用名称](doc/brand-identity.md) | 喵连命名、图标资源、色彩及升级兼容 |
 | [独立维护与分支约定](doc/independent-maintenance.md) | 仓库来源、解绑记录与 dev / main 工作流 |
 | [界面改造](doc/ui-redesign.md)、[界面细化](doc/ui-polish.md) | 原生页面、加载反馈、图标测速和配置页布局 |
 | [首页状态与信息增强](doc/home-dashboard.md) | 播放/暂停按钮、自动出口检测、服务状态和流量概览 |
@@ -189,4 +194,4 @@ HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/
 
 `dev` 用于日常开发，`main` 保存通过验证的版本。上游项目作为来源和按需修复参考，不自动跟随或定期整仓合并。分支操作见 [独立维护说明](doc/independent-maintenance.md)。
 
-项目遵循 [GPL-3.0-only](LICENSE)，第三方组件及预编译库说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。独立维护保留原项目与各贡献者的历史和署名。Clash Harmony 不提供代理节点、订阅账号或订阅服务。
+项目遵循 [GPL-3.0-only](LICENSE)，第三方组件及预编译库说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。独立维护保留原项目与各贡献者的历史和署名。喵连不提供代理节点、订阅账号或订阅服务。

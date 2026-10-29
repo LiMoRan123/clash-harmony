@@ -2,19 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "Clash Harmony entry module"
+      "value": "喵连 HarmonyOS 客户端"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Clash Harmony main ability"
+      "value": "喵连主界面"
     },
     {
       "name": "EntryAbility_label",
-      "value": "Clash Harmony"
+      "value": "喵连"
     },
     {
       "name": "ClashVpnExtensionAbility_desc",
-      "value": "VPN extension for Clash Harmony"
+      "value": "喵连 VPN 扩展"
     },
     {
       "name": "read_pasteboard_reason",

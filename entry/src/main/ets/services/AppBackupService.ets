@@ -51,7 +51,7 @@ export class AppBackupService {
   static async restore(context: common.Context, text: string): Promise<ProfileState> {
     const bundle: PortableBackup = JSON.parse(text) as PortableBackup;
     if (!bundle || bundle.format !== 'clash-harmony' || bundle.version !== 1 || !Array.isArray(bundle.profiles)) {
-      throw new Error('这不是受支持的 Clash Harmony 备份');
+      throw new Error('这不是受支持的喵连 / Clash Harmony 备份');
     }
     // Validate every profile before replacing the user's current profile list.
     for (let index = 0; index < bundle.profiles.length; index++) {

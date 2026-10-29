@@ -2282,7 +2282,7 @@ struct Index {
           this.ToolRow('网络设置', 'IPv6、局域网与 DNS', $r('app.media.ui_shield'), () => { this.openSettings('network') })
           this.ToolRow('延迟测试', '测试地址与超时', $r('app.media.ui_gauge'), () => { this.openSettings('delay') })
           this.ToolRow('备份与恢复', '导出配置与应用偏好', $r('app.media.ui_folder'), () => { this.openSettings('backup') })
-          this.ToolRow('关于', 'Clash Harmony ' + APP_VERSION_NAME, $r('app.media.ui_info'), () => { this.openSettings('about') })
+          this.ToolRow('关于', '喵连 · MiaoLink ' + APP_VERSION_NAME, $r('app.media.ui_info'), () => { this.openSettings('about') })
         }.padding({ left: AppTheme.gutter, right: AppTheme.gutter, bottom: 20 })
       }.layoutWeight(1).scrollBar(BarState.Off).width('100%')
     } else {
@@ -2581,13 +2581,15 @@ struct Index {
           this.Notice('首选地址失败时会尝试其他测试地址。延迟测试不代表下载带宽。')
         } else if (this.settingsPage === 'backup') {
           this.ToolRow('导出备份', '保存所有配置内容与应用偏好', $r('app.media.ui_up'), () => { this.exportAppBackup() })
-          this.ToolRow('从文件恢复', '选择 Clash Harmony JSON 备份', $r('app.media.ui_down'), () => { this.pickAppBackup() })
+          this.ToolRow('从文件恢复', '选择喵连或原 Clash Harmony JSON 备份', $r('app.media.ui_down'), () => { this.pickAppBackup() })
           this.ToolRow('导出运行日志', '保存当前应用记录的操作日志', $r('app.media.ui_file'), () => { this.exportAppLogs() })
           this.Notice('备份包含订阅链接与节点凭据，请保存在你信任的位置。')
         } else {
           Column({ space: 14 }) {
-            this.Icon($r('app.media.ui_shield'), 58, AppTheme.primary)
-            Text('Clash Harmony').fontSize(24).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
+            Image($r('app.media.app_icon')).width(88).height(88).objectFit(ImageFit.Contain)
+              .accessibilityText('喵连 Logo')
+            Text('喵连').fontSize(24).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
+            Text('MiaoLink').fontSize(15).fontColor(AppTheme.primary)
             Text('版本 ' + APP_VERSION_NAME).fontSize(13).fontColor(AppTheme.muted)
             Text('为 HarmonyOS 构建的 Mihomo 代理客户端').fontSize(13).fontColor(AppTheme.muted)
           }.width('100%').padding(32).backgroundColor(AppTheme.surface).borderRadius(28)
@@ -2747,7 +2749,7 @@ struct Index {
       this.refreshLifecycleDiagnostics();
       const lines: string[] = this.appLogs.map((item: AppLogEntry) => item.time + ' [' + item.level + '] ' + item.message);
       lines.push(...this.lifecycleLogs);
-      if (await DocumentExportService.save(getContext(this) as common.Context, 'clash-harmony.log', lines.join('\n'))) {
+      if (await DocumentExportService.save(getContext(this) as common.Context, 'miaolink.log', lines.join('\n'))) {
         this.notify('日志已导出');
       }
     } catch (err) { this.notify('日志导出失败') }
@@ -2757,7 +2759,7 @@ struct Index {
     try {
       const context = getContext(this) as common.Context;
       const content: string = await AppBackupService.create(context);
-      if (await DocumentExportService.save(context, 'clash-harmony-backup.json', content)) {
+      if (await DocumentExportService.save(context, 'miaolink-backup.json', content)) {
         this.notify('备份已导出');
       }
     } catch (err) { this.notify('备份导出失败，请确认配置文件可读取') }

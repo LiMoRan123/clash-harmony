@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1024" viewBox="0 0 1440 1024">
+<rect width="1440" height="1024" fill="#F8F7FC"/>
+<text x="84" y="100" font-family="PingFang SC, sans-serif" font-size="20" letter-spacing="4" fill="#6750A4">MIAOLINK · BRAND IDENTITY</text>
+<text x="80" y="194" font-family="PingFang SC, sans-serif" font-size="72" font-weight="600" fill="#211E29">喵连</text>
+<text x="84" y="245" font-family="PingFang SC, sans-serif" font-size="26" fill="#686272">轻轻一点，喵连世界。</text>
+<g transform="translate(785 82) scale(.98)"><rect width="512" height="512" rx="112" fill="#EADDFF"/>  <path d="M128 206 122 116Q120 100 136 106L209 150Q256 137 303 150L376 106Q392 100 390 116L384 206C405 232 414 258 408 286 397 356 334 402 256 402S115 356 104 286C98 258 107 232 128 206Z" fill="#6750A4"/>
+  <path d="m147 138 8 52 41-22Z m218 0-8 52-41-22Z" fill="#D0BCFF"/>
+  <path d="M192 254C192 329 320 329 320 254" fill="none" stroke="#F8F5FF" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="192" cy="254" r="17" fill="#F8F5FF"/>
+  <circle cx="320" cy="254" r="17" fill="#F8F5FF"/>
+</g>
+<rect x="84" y="328" width="550" height="274" rx="36" fill="#211F26"/>
+<g transform="translate(104 359) scale(.37)"><rect width="512" height="512" rx="112" fill="#EADDFF"/>  <path d="M128 206 122 116Q120 100 136 106L209 150Q256 137 303 150L376 106Q392 100 390 116L384 206C405 232 414 258 408 286 397 356 334 402 256 402S115 356 104 286C98 258 107 232 128 206Z" fill="#6750A4"/>
+  <path d="m147 138 8 52 41-22Z m218 0-8 52-41-22Z" fill="#D0BCFF"/>
+  <path d="M192 254C192 329 320 329 320 254" fill="none" stroke="#F8F5FF" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="192" cy="254" r="17" fill="#F8F5FF"/>
+  <circle cx="320" cy="254" r="17" fill="#F8F5FF"/>
+</g>
+<text x="326" y="448" font-family="PingFang SC, sans-serif" font-size="38" fill="#E9E1ED">喵连</text>
+<text x="328" y="490" font-family="sans-serif" font-size="22" fill="#D0BCFF">MiaoLink</text>
+<text x="328" y="534" font-family="PingFang SC, sans-serif" font-size="18" fill="#C4BDCC">HarmonyOS 原生代理客户端</text>
+<text x="84" y="690" font-family="PingFang SC, sans-serif" font-size="22" fill="#211E29">猫耳轮廓 × 节点笑脸</text>
+<text x="84" y="730" font-family="PingFang SC, sans-serif" font-size="18" fill="#686272">两个节点由一条弧线相连，让「连接」成为猫咪的微笑。</text>
+<g transform="translate(84 790)"><rect width="132" height="100" rx="20" fill="#6750A4"/><rect x="148" width="132" height="100" rx="20" fill="#D0BCFF"/><rect x="296" width="132" height="100" rx="20" fill="#EADDFF"/><rect x="444" width="132" height="100" rx="20" fill="#211F26"/></g>
+<g font-family="sans-serif" font-size="17" fill="#686272"><text x="84" y="924">#6750A4</text><text x="232" y="924">#D0BCFF</text><text x="380" y="924">#EADDFF</text><text x="528" y="924">#211F26</text></g>
+<text x="860" y="684" font-family="PingFang SC, sans-serif" font-size="20" fill="#686272">实际图标尺寸</text>
+<g transform="translate(855 744) scale(.25)"><rect width="512" height="512" rx="112" fill="#EADDFF"/>  <path d="M128 206 122 116Q120 100 136 106L209 150Q256 137 303 150L376 106Q392 100 390 116L384 206C405 232 414 258 408 286 397 356 334 402 256 402S115 356 104 286C98 258 107 232 128 206Z" fill="#6750A4"/>
+  <path d="m147 138 8 52 41-22Z m218 0-8 52-41-22Z" fill="#D0BCFF"/>
+  <path d="M192 254C192 329 320 329 320 254" fill="none" stroke="#F8F5FF" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="192" cy="254" r="17" fill="#F8F5FF"/>
+  <circle cx="320" cy="254" r="17" fill="#F8F5FF"/>
+</g>
+<g transform="translate(1048 776) scale(.125)"><rect width="512" height="512" rx="112" fill="#EADDFF"/>  <path d="M128 206 122 116Q120 100 136 106L209 150Q256 137 303 150L376 106Q392 100 390 116L384 206C405 232 414 258 408 286 397 356 334 402 256 402S115 356 104 286C98 258 107 232 128 206Z" fill="#6750A4"/>
+  <path d="m147 138 8 52 41-22Z m218 0-8 52-41-22Z" fill="#D0BCFF"/>
+  <path d="M192 254C192 329 320 329 320 254" fill="none" stroke="#F8F5FF" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="192" cy="254" r="17" fill="#F8F5FF"/>
+  <circle cx="320" cy="254" r="17" fill="#F8F5FF"/>
+</g>
+<g transform="translate(1176 792) scale(.0625)"><rect width="512" height="512" rx="112" fill="#EADDFF"/>  <path d="M128 206 122 116Q120 100 136 106L209 150Q256 137 303 150L376 106Q392 100 390 116L384 206C405 232 414 258 408 286 397 356 334 402 256 402S115 356 104 286C98 258 107 232 128 206Z" fill="#6750A4"/>
+  <path d="m147 138 8 52 41-22Z m218 0-8 52-41-22Z" fill="#D0BCFF"/>
+  <path d="M192 254C192 329 320 329 320 254" fill="none" stroke="#F8F5FF" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="192" cy="254" r="17" fill="#F8F5FF"/>
+  <circle cx="320" cy="254" r="17" fill="#F8F5FF"/>
+</g>
+<g font-family="sans-serif" font-size="16" fill="#686272"><text x="891" y="924">128</text><text x="1068" y="924">64</text><text x="1180" y="924">32</text></g>
+</svg>

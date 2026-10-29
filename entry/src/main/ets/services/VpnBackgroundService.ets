@@ -108,7 +108,7 @@ export class VpnBackgroundService {
       notificationSlotType: notificationManager.SlotType.LIVE_VIEW,
       content: {
         notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_SYSTEM_LIVE_VIEW,
-        systemLiveView: { typeCode: 8, title: 'Clash Harmony VPN', text: text,
+        systemLiveView: { typeCode: 8, title: '喵连 VPN', text: text,
           progress: { currentValue: transferred, isPercentage: false } }
       },
       template: { name: 'downloadTemplate', data: {
