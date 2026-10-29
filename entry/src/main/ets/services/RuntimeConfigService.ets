@@ -1,10 +1,10 @@
 import { common } from '@kit.AbilityKit';
-import { util } from '@kit.ArkTS';
 import { fileIo } from '@kit.CoreFileKit';
 import { ClashProfile, ProfileState } from '../models/Profile';
 import { CoreService } from './CoreService';
 import { ConvertedSubscription, GenericSubscriptionConverterService } from './GenericSubscriptionConverterService';
 import { ProfileStore } from './ProfileStore';
+import { AppPreferences, AppPreferencesService, defaultAppPreferences } from './AppPreferencesService';
 
 const RUNTIME_DIR_NAME: string = 'runtime';
 const RUNTIME_CONFIG_NAME: string = 'current.yaml';
@@ -19,7 +19,8 @@ export interface RuntimeConfigResult {
 }
 
 export class RuntimeConfigService {
-  static async prepareCurrentProfile(context: common.Context, state?: ProfileState): Promise<RuntimeConfigResult> {
+  static async prepareCurrentProfile(context: common.Context, state?: ProfileState,
+    mode: 'rule' | 'global' | 'direct' = 'rule'): Promise<RuntimeConfigResult> {
     const profileState: ProfileState = state ? state : await ProfileStore.load(context);
     const current: ClashProfile | undefined = CoreService.getCurrentProfile(profileState);
     if (!current) {
@@ -38,15 +39,14 @@ export class RuntimeConfigService {
 
       const sourceText: string = await fileIo.readText(current.filePath);
       const converted: ConvertedSubscription = GenericSubscriptionConverterService.normalizeToClashYaml(sourceText);
-      const resolved: ConfigTextResult = converted.ok ? RuntimeConfigService.configText(converted.text) : RuntimeConfigService.resolveConfigText(sourceText);
-      if (!resolved.ok) {
-        return RuntimeConfigService.failure(resolved.message);
+      if (!converted.ok) {
+        return RuntimeConfigService.failure(converted.message);
       }
 
       const runtimeDir: string = `${context.filesDir}/${RUNTIME_DIR_NAME}`;
       await RuntimeConfigService.ensureDir(runtimeDir);
       const runtimePath: string = `${runtimeDir}/${RUNTIME_CONFIG_NAME}`;
-      const runtimeText: string = await RuntimeConfigService.normalize(resolved.text);
+      const runtimeText: string = await RuntimeConfigService.normalize(converted.text, await AppPreferencesService.load(context), mode);
       await RuntimeConfigService.writeText(runtimePath, runtimeText);
 
       return {
@@ -66,15 +66,17 @@ export class RuntimeConfigService {
     return `${context.filesDir}/${RUNTIME_DIR_NAME}/${RUNTIME_CONFIG_NAME}`;
   }
 
-  private static async normalize(text: string): Promise<string> {
+  private static async normalize(text: string, settings: AppPreferences = defaultAppPreferences(),
+    mode: 'rule' | 'global' | 'direct' = 'rule'): Promise<string> {
     const stripped: string = RuntimeConfigService.removeManagedTopLevelKeys(text);
     const base: string = RuntimeConfigService.trimTrailingWhitespace(stripped);
     const managed: string[] = [
       'mixed-port: 7890',
-      'allow-lan: false',
-      'ipv6: false',
-      'mode: rule',
-      'log-level: info',
+      'allow-lan: ' + settings.allowLan,
+      'bind-address: "*"',
+      'ipv6: ' + settings.ipv6,
+      'mode: ' + mode,
+      'log-level: ' + settings.logLevel,
       'external-controller: 127.0.0.1:9090',
       'secret: ""'
     ];
@@ -82,9 +84,9 @@ export class RuntimeConfigService {
       'dns:',
       '  enable: true',
       '  listen: 127.0.0.1:1053',
-      '  ipv6: false',
+      '  ipv6: ' + settings.ipv6,
       '  use-hosts: false',
-      '  enhanced-mode: redir-host',
+      '  enhanced-mode: ' + settings.dnsMode,
       '  default-nameserver:',
       '    - 223.5.5.5',
       '    - 119.29.29.29',
@@ -106,6 +108,7 @@ export class RuntimeConfigService {
       'redir-port',
       'tproxy-port',
       'allow-lan',
+      'bind-address',
       'ipv6',
       'mode',
       'log-level',
@@ -143,7 +146,7 @@ export class RuntimeConfigService {
     if (line.length === 0 || line.startsWith(' ') || line.startsWith('\t') || line.startsWith('#')) {
       return false;
     }
-    return line.indexOf(':') > 0;
+    return /^(?:[A-Za-z0-9_-]+|"[^"\n]+"|'[^'\n]+')[ \t]*:/.test(line);
   }
 
   private static isManagedTopLevelLine(line: string, keys: string[]): boolean {
@@ -156,120 +159,16 @@ export class RuntimeConfigService {
       return false;
     }
 
-    const key: string = line.substring(0, colonIndex).trim();
+    let key: string = line.substring(0, colonIndex).trim();
+    if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+      key = key.substring(1, key.length - 1);
+    }
     for (let index = 0; index < keys.length; index++) {
       if (key === keys[index]) {
         return true;
       }
     }
     return false;
-  }
-
-  private static looksLikeClashYaml(text: string): boolean {
-    return text.indexOf('proxies:') >= 0 ||
-      text.indexOf('proxy-providers:') >= 0 ||
-      text.indexOf('proxy-groups:') >= 0 ||
-      text.indexOf('rules:') >= 0;
-  }
-
-  private static resolveConfigText(text: string): ConfigTextResult {
-    const trimmed: string = text.trim();
-    if (RuntimeConfigService.looksLikeClashYaml(trimmed)) {
-      return RuntimeConfigService.configText(trimmed);
-    }
-
-    if (RuntimeConfigService.containsProxyUri(trimmed)) {
-      return RuntimeConfigService.configFailure('检测到通用节点订阅，请使用 Clash/Mihomo YAML 订阅链接或先转换为 YAML');
-    }
-
-    if (RuntimeConfigService.looksLikeHtml(trimmed)) {
-      return RuntimeConfigService.configFailure('订阅返回的是网页或错误页，请检查订阅链接是否为 Clash YAML 地址');
-    }
-
-    const decoded: string = RuntimeConfigService.tryDecodeBase64(trimmed);
-    if (decoded.length > 0) {
-      if (RuntimeConfigService.looksLikeClashYaml(decoded)) {
-        return RuntimeConfigService.configText(decoded);
-      }
-      if (RuntimeConfigService.containsProxyUri(decoded)) {
-        return RuntimeConfigService.configFailure('检测到 base64 通用节点订阅，请使用 Clash/Mihomo YAML 订阅链接或先转换为 YAML');
-      }
-    }
-
-    return RuntimeConfigService.configFailure('订阅内容不是 Clash/Mihomo YAML，请检查订阅类型或转换后再导入');
-  }
-
-  private static containsProxyUri(text: string): boolean {
-    return text.indexOf('ss://') >= 0 ||
-      text.indexOf('ssr://') >= 0 ||
-      text.indexOf('vmess://') >= 0 ||
-      text.indexOf('trojan://') >= 0 ||
-      text.indexOf('vless://') >= 0 ||
-      text.indexOf('hysteria://') >= 0 ||
-      text.indexOf('hysteria2://') >= 0 ||
-      text.indexOf('hy2://') >= 0 ||
-      text.indexOf('tuic://') >= 0;
-  }
-
-  private static looksLikeHtml(text: string): boolean {
-    const lower: string = text.toLowerCase();
-    return lower.startsWith('<!doctype') ||
-      lower.startsWith('<html') ||
-      lower.indexOf('<body') >= 0 ||
-      lower.indexOf('</html>') >= 0;
-  }
-
-  private static tryDecodeBase64(text: string): string {
-    const compact: string = text.replace(/\r/g, '').replace(/\n/g, '').trim();
-    if (compact.length < 16 || !RuntimeConfigService.looksLikeBase64(compact)) {
-      return '';
-    }
-
-    try {
-      const helper: util.Base64Helper = new util.Base64Helper();
-      const bytes: Uint8Array = helper.decodeSync(compact, util.Type.BASIC);
-      const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
-      return decoder.decode(bytes).trim();
-    } catch (err) {
-      try {
-        const helper: util.Base64Helper = new util.Base64Helper();
-        const bytes: Uint8Array = helper.decodeSync(compact, util.Type.BASIC_URL_SAFE);
-        const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
-        return decoder.decode(bytes).trim();
-      } catch (innerErr) {
-        return '';
-      }
-    }
-  }
-
-  private static looksLikeBase64(text: string): boolean {
-    for (let index = 0; index < text.length; index++) {
-      const code: number = text.charCodeAt(index);
-      const isUpper: boolean = code >= 65 && code <= 90;
-      const isLower: boolean = code >= 97 && code <= 122;
-      const isDigit: boolean = code >= 48 && code <= 57;
-      const isSymbol: boolean = text[index] === '+' || text[index] === '/' || text[index] === '-' || text[index] === '_' || text[index] === '=';
-      if (!isUpper && !isLower && !isDigit && !isSymbol) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static configText(text: string): ConfigTextResult {
-    return {
-      ok: true,
-      message: 'ok',
-      text: text
-    };
-  }
-
-  private static configFailure(message: string): ConfigTextResult {
-    return {
-      ok: false,
-      message: message,
-      text: ''
-    };
   }
 
   private static async ensureDir(path: string): Promise<void> {
@@ -326,10 +225,4 @@ export class RuntimeConfigService {
       size: ''
     };
   }
-}
-
-interface ConfigTextResult {
-  ok: boolean;
-  message: string;
-  text: string;
 }

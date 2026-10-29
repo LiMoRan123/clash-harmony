@@ -39,10 +39,10 @@ export interface ForwarderStats {
   active: boolean;
 }
 
-export const startTun: (configPath: string, tunFd: number) => NativeCoreState;
-export const stopTun: () => NativeCoreState;
-export const startCore: (configPath: string) => NativeCoreState;
-export const stopCore: () => NativeCoreState;
+export const startTun: (configPath: string, tunFd: number) => Promise<NativeCoreState>;
+export const stopTun: () => Promise<NativeCoreState>;
+export const startCore: (configPath: string) => Promise<NativeCoreState>;
+export const stopCore: () => Promise<NativeCoreState>;
 export const getState: () => NativeCoreState;
 export const setControllerReady: (ready: boolean, version: string) => NativeCoreState;
 export const protectSocket: (fd: number) => void;

@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { preferences } from '@kit.ArkData';
 import { ClashProfile, createEmptyProfileState, ProfileState } from '../models/Profile';
+import { SubscriptionInfoService } from './SubscriptionInfoService';
 
 const STORE_NAME: string = 'clash_harmony_profiles';
 const KEY_STATE: string = 'profile_state';
@@ -133,7 +134,9 @@ export class ProfileStore {
           filePath: item.filePath ? item.filePath : '',
           updatedAt: item.updatedAt,
           nodeCount: item.nodeCount,
-          traffic: item.traffic
+          traffic: item.traffic,
+          subscriptionInfo: item.type === 'local' ? undefined : SubscriptionInfoService.normalize(item.subscriptionInfo),
+          subscriptionInfoCheckedAt: item.type === 'local' ? undefined : SubscriptionInfoService.checkedAt(item.subscriptionInfoCheckedAt)
         });
       }
     }

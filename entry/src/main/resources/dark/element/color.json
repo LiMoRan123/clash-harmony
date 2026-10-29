@@ -1,0 +1,76 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#141218"
+    },
+    {
+      "name": "ui_background",
+      "value": "#141218"
+    },
+    {
+      "name": "ui_surface",
+      "value": "#211F26"
+    },
+    {
+      "name": "ui_surface_variant",
+      "value": "#2D2933"
+    },
+    {
+      "name": "ui_selected_surface",
+      "value": "#30263F"
+    },
+    {
+      "name": "ui_primary",
+      "value": "#D0BCFF"
+    },
+    {
+      "name": "ui_on_primary",
+      "value": "#381E72"
+    },
+    {
+      "name": "ui_primary_container",
+      "value": "#4A3865"
+    },
+    {
+      "name": "ui_on_primary_container",
+      "value": "#EADDFF"
+    },
+    {
+      "name": "ui_text",
+      "value": "#E9E1ED"
+    },
+    {
+      "name": "ui_muted",
+      "value": "#C4BDCC"
+    },
+    {
+      "name": "ui_outline",
+      "value": "#45404D"
+    },
+    {
+      "name": "ui_success",
+      "value": "#9BD7B5"
+    },
+    {
+      "name": "ui_success_container",
+      "value": "#183D2C"
+    },
+    {
+      "name": "ui_danger",
+      "value": "#FFB4AB"
+    },
+    {
+      "name": "ui_danger_container",
+      "value": "#5E2420"
+    },
+    {
+      "name": "ui_warning",
+      "value": "#F0C078"
+    },
+    {
+      "name": "ui_warning_container",
+      "value": "#49351A"
+    }
+  ]
+}

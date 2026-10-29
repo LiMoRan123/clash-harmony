@@ -148,34 +148,57 @@ function stringifyError(err: Object): string {
   return JSON.stringify(err);
 }
 
+async function waitForCoreOperation(operation: Promise<CoreBridgeState>, timeoutMs: number,
+  action: string): Promise<CoreBridgeState> {
+  let timer: number = -1;
+  const timeout: Promise<CoreBridgeState> = new Promise<CoreBridgeState>((resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`核心${action}超时，后台任务仍在运行，请稍后重试或重新打开应用`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race<CoreBridgeState>([operation, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class CoreBridgeService {
-  static startTun(configPath: string, tunFd: number): CoreBridgeState {
+  static async startTun(configPath: string, tunFd: number, timeoutMs: number = 20000): Promise<CoreBridgeState> {
     try {
-      return rememberState(nativeCore.startTun(configPath, tunFd) as CoreBridgeState);
+      const state: CoreBridgeState = await waitForCoreOperation(
+        nativeCore.startTun(configPath, tunFd) as Promise<CoreBridgeState>, timeoutMs, '启动');
+      return rememberState(state);
     } catch (err) {
       return rememberState(fallbackState(configPath, tunFd, stringifyError(err)));
     }
   }
 
-  static stopTun(): CoreBridgeState {
+  static async stopTun(timeoutMs: number = 10000): Promise<CoreBridgeState> {
     try {
-      return rememberState(nativeCore.stopTun() as CoreBridgeState);
+      const state: CoreBridgeState = await waitForCoreOperation(
+        nativeCore.stopTun() as Promise<CoreBridgeState>, timeoutMs, '停止');
+      return rememberState(state);
     } catch (err) {
       return rememberState(fallbackState('', -1, stringifyError(err)));
     }
   }
 
-  static startCore(configPath: string): CoreBridgeState {
+  static async startCore(configPath: string, timeoutMs: number = 15000): Promise<CoreBridgeState> {
     try {
-      return rememberState(nativeCore.startCore(configPath) as CoreBridgeState);
+      const state: CoreBridgeState = await waitForCoreOperation(
+        nativeCore.startCore(configPath) as Promise<CoreBridgeState>, timeoutMs, '启动');
+      return rememberState(state);
     } catch (err) {
       return rememberState(fallbackState(configPath, -1, stringifyError(err)));
     }
   }
 
-  static stopCore(): CoreBridgeState {
+  static async stopCore(timeoutMs: number = 10000): Promise<CoreBridgeState> {
     try {
-      return rememberState(nativeCore.stopCore() as CoreBridgeState);
+      const state: CoreBridgeState = await waitForCoreOperation(
+        nativeCore.stopCore() as Promise<CoreBridgeState>, timeoutMs, '停止');
+      return rememberState(state);
     } catch (err) {
       return rememberState(fallbackState('', -1, stringifyError(err)));
     }

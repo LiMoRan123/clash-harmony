@@ -4,6 +4,7 @@ import { fileIo } from '@kit.CoreFileKit';
 import { ClashProfile, createLocalProfile, createRemoteProfile, ProfileState } from '../models/Profile';
 import { ClashConfigParserService, ParsedProxyNode } from './ClashConfigParserService';
 import { ProfileStore } from './ProfileStore';
+import { ConvertedSubscription, GenericSubscriptionConverterService } from './GenericSubscriptionConverterService';
 
 export interface ClipboardImportResult {
   ok: boolean;
@@ -32,17 +33,18 @@ export class ClipboardImportService {
         };
       }
 
-      if (!ClipboardImportService.looksLikeClashYaml(text)) {
-        return ClipboardImportService.failure('剪贴板内容不是订阅 URL 或 Clash YAML', state);
+      const converted: ConvertedSubscription = GenericSubscriptionConverterService.normalizeToClashYaml(text);
+      if (!converted.ok) {
+        return ClipboardImportService.failure(converted.message, state);
       }
 
       const uid: string = `clipboard_${Date.now()}`;
       const dir: string = `${context.filesDir}/profiles`;
       await ClipboardImportService.ensureDir(dir);
       const path: string = `${dir}/${uid}.yaml`;
-      await ClipboardImportService.writeText(path, text);
-      const nodes: ParsedProxyNode[] = ClashConfigParserService.parseProxyNodes(text);
-      const profile: ClashProfile = createLocalProfile('剪贴板配置', path, nodes.length, ClipboardImportService.formatBytes(text.length));
+      await ClipboardImportService.writeText(path, converted.text);
+      const nodes: ParsedProxyNode[] = ClashConfigParserService.parseProxyNodes(converted.text);
+      const profile: ClashProfile = createLocalProfile('剪贴板配置', path, nodes.length, ClipboardImportService.formatBytes(converted.text.length));
       const nextState: ProfileState = await ProfileStore.replace(context, profile);
       return {
         ok: true,
@@ -52,13 +54,6 @@ export class ClipboardImportService {
     } catch (err) {
       return ClipboardImportService.failure('剪贴板导入失败，请确认已复制文本并授权读取', state);
     }
-  }
-
-  private static looksLikeClashYaml(text: string): boolean {
-    return text.indexOf('proxies:') >= 0 ||
-      text.indexOf('proxy-providers:') >= 0 ||
-      text.indexOf('proxy-groups:') >= 0 ||
-      text.indexOf('rules:') >= 0;
   }
 
   private static async ensureDir(path: string): Promise<void> {

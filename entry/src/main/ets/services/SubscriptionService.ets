@@ -5,6 +5,10 @@ import { ClashProfile, ProfileState } from '../models/Profile';
 import { ClashConfigParserService, ParsedProxyNode } from './ClashConfigParserService';
 import { ConvertedSubscription, GenericSubscriptionConverterService } from './GenericSubscriptionConverterService';
 import { ProfileStore } from './ProfileStore';
+import { SubscriptionInfoService } from './SubscriptionInfoService';
+
+// Keep our app identity and advertise the Clash-compatible format marker used by FlClash.
+const SUBSCRIPTION_USER_AGENT: string = 'ClashHarmony/v0.1.0 clash-verge Platform/ohos';
 
 export interface SubscriptionUpdateResult {
   ok: boolean;
@@ -44,7 +48,7 @@ export class SubscriptionService {
     if (!converted.ok) {
       return {
         ok: false,
-        message: converted.message,
+        message: `订阅已下载，但无法导入：${converted.message}`,
         state: state
       };
     }
@@ -58,7 +62,9 @@ export class SubscriptionService {
       filePath: filePath,
       updatedAt: Date.now(),
       nodeCount: converted.nodeCount > 0 ? converted.nodeCount : SubscriptionService.estimateNodeCount(converted.text),
-      traffic: SubscriptionService.formatBytes(converted.text.length)
+      traffic: SubscriptionService.formatBytes(converted.text.length),
+      subscriptionInfo: SubscriptionInfoService.fromHeaders(payload.headers),
+      subscriptionInfoCheckedAt: Date.now()
     };
     const nextState: ProfileState = await ProfileStore.replace(context, nextProfile);
 
@@ -86,7 +92,11 @@ export class SubscriptionService {
         expectDataType: http.HttpDataType.STRING,
         readTimeout: 15000,
         connectTimeout: 8000,
-        usingCache: false
+        usingCache: false,
+        header: {
+          'User-Agent': SUBSCRIPTION_USER_AGENT,
+          'Accept': 'application/yaml, application/x-yaml, text/yaml, text/plain, */*'
+        }
       });
 
       const code: number = response.responseCode as number;
@@ -110,7 +120,8 @@ export class SubscriptionService {
       return {
         ok: true,
         message: 'ok',
-        text: text
+        text: text,
+        headers: response.header
       };
     } catch (err) {
       return {
@@ -183,4 +194,5 @@ interface FetchResult {
   ok: boolean;
   message: string;
   text: string;
+  headers?: Object;
 }

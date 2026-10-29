@@ -62,7 +62,7 @@ export class ClashConfigParserService {
         continue;
       }
 
-      if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t')) {
+      if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t') && !trimmed.startsWith('- ')) {
         if (inProxies) {
           ClashConfigParserService.pushNode(nodes, currentName, currentType, currentUdp, currentServer, currentPort);
           currentName = '';
@@ -71,7 +71,7 @@ export class ClashConfigParserService {
           currentServer = '';
           currentPort = 0;
         }
-        inProxies = trimmed === 'proxies:';
+        inProxies = /^(?:proxies|"proxies"|'proxies')[ \t]*:[ \t]*(?:#.*)?$/.test(trimmed);
         continue;
       }
 
@@ -90,7 +90,7 @@ export class ClashConfigParserService {
         continue;
       }
 
-      if (currentName.length >= 0 && trimmed.startsWith('name:')) {
+      if (currentName.length === 0 && trimmed.startsWith('name:')) {
         currentName = ClashConfigParserService.cleanValue(trimmed.substring(5));
       } else if (trimmed.startsWith('type:')) {
         currentType = ClashConfigParserService.cleanValue(trimmed.substring(5));

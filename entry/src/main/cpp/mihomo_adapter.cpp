@@ -70,8 +70,10 @@ enum class ExecLaunchKind {
     FD
 };
 
-struct RealStartCoreCall {
+struct RealStartCall {
     StartCoreFn fn = nullptr;
+    StartFn tunFn = nullptr;
+    int tunFd = -1;
     std::string configPath;
     int result = -1;
 };
@@ -104,19 +106,22 @@ void AdapterLogError(const char* format, ...)
 #endif
 }
 
-void* RealStartCoreWorker(void* opaque)
+void* RealStartWorker(void* opaque)
 {
-    auto* call = reinterpret_cast<RealStartCoreCall*>(opaque);
-    AdapterLogInfo("worker calling real MihomoStartCore: config=%s", call->configPath.c_str());
-    call->result = call->fn(call->configPath.c_str());
-    AdapterLogInfo("worker real MihomoStartCore returned: result=%d", call->result);
+    auto* call = reinterpret_cast<RealStartCall*>(opaque);
+    AdapterLogInfo("worker calling real core start: tun=%d", call->tunFd);
+    call->result = call->tunFn != nullptr ? call->tunFn(call->configPath.c_str(), call->tunFd) :
+        call->fn(call->configPath.c_str());
+    AdapterLogInfo("worker real core start returned: result=%d", call->result);
     return nullptr;
 }
 
-int CallRealStartCoreOnWorker(StartCoreFn fn, const char* configPath)
+int CallRealStartOnWorker(StartCoreFn fn, StartFn tunFn, const char* configPath, int tunFd)
 {
-    RealStartCoreCall call;
+    RealStartCall call;
     call.fn = fn;
+    call.tunFn = tunFn;
+    call.tunFd = tunFd;
     call.configPath = configPath == nullptr ? "" : configPath;
 
     pthread_attr_t attr;
@@ -134,7 +139,7 @@ int CallRealStartCoreOnWorker(StartCoreFn fn, const char* configPath)
     }
 
     pthread_t thread {};
-    int createResult = pthread_create(&thread, &attr, RealStartCoreWorker, &call);
+    int createResult = pthread_create(&thread, &attr, RealStartWorker, &call);
     pthread_attr_destroy(&attr);
     if (createResult != 0) {
         g_lastError = std::string("pthread_create failed: ") + strerror(createResult);
@@ -960,8 +965,8 @@ bool EnsureRealAdapterLoadedLocked()
                    g_realAttachTun == nullptr ? "no" : "yes",
                    g_realAdapterInfo == nullptr ? "no" : "yes",
                    g_realFreeCString == nullptr ? "no" : "yes");
-    AdapterLogInfo("waiting after real adapter dlopen for Go runtime initialization");
-    usleep(1000 * 1000);
+    // The packaged Go export stubs call _cgo_wait_runtime_init_done before
+    // crosscall2. Let that readiness barrier wait only as long as necessary.
     return true;
 }
 
@@ -1003,7 +1008,7 @@ int MihomoStart(const char* configPath, int tunFd)
     }
 
     if (EnsureRealAdapterLoadedLocked()) {
-        int result = g_realStart(configPath, tunFd);
+        int result = CallRealStartOnWorker(nullptr, g_realStart, configPath, tunFd);
         g_started = result == 0;
         if (result != 0) {
             std::string realError = SafeRealLastErrorLocked();
@@ -1042,7 +1047,7 @@ int MihomoStartCore(const char* configPath)
         return -3;
     }
     AdapterLogInfo("calling real MihomoStartCore on worker: config=%s", configPath);
-    int result = CallRealStartCoreOnWorker(g_realStartCore, configPath);
+    int result = CallRealStartOnWorker(g_realStartCore, nullptr, configPath, -1);
     AdapterLogInfo("real MihomoStartCore returned: result=%d", result);
     g_started = result == 0;
     if (result != 0) {

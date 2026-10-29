@@ -13,3 +13,13 @@ local.properties
 *.har
 *.log
 .DS_Store
+
+# Developer-local signing material and credentials.
+*.p12
+*.pfx
+*.p7b
+*.jks
+*.keystore
+*.mobileprovision
+.env
+.env.local

@@ -1,5 +1,12 @@
 export type ProfileType = 'remote' | 'local';
 
+export interface SubscriptionInfo {
+  upload?: number;
+  download?: number;
+  total?: number;
+  expire?: number;
+}
+
 export interface ClashProfile {
   uid: string;
   type: ProfileType;
@@ -9,6 +16,8 @@ export interface ClashProfile {
   updatedAt: number;
   nodeCount: number;
   traffic: string;
+  subscriptionInfo?: SubscriptionInfo;
+  subscriptionInfoCheckedAt?: number;
 }
 
 export interface ProfileState {

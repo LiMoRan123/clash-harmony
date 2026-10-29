@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
+const homeCardsSource = fs.readFileSync(path.join(root, 'entry/src/main/ets/components/HomeRuntimeCards.ets'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/Index.ets'), 'utf8');
 const subscriptionSource = fs.readFileSync(path.join(root, 'entry/src/main/ets/services/SubscriptionService.ets'), 'utf8');
 const converterSource = fs.readFileSync(path.join(root, 'entry/src/main/ets/services/GenericSubscriptionConverterService.ets'), 'utf8');
@@ -48,31 +49,29 @@ assert.match(indexSource, /TrafficPollerService\.stop/);
 assert.match(indexSource, /resumeRuntimeIfControllerAvailable/);
 assert.match(indexSource, /handleRuntimeUnavailable/);
 assert.match(indexSource, /startHomeRefreshLoop/);
-assert.match(indexSource, /refreshLiveRuntimeSnapshot/);
+assert.match(indexSource, /applyConnectionsSnapshot/);
 assert.match(indexSource, /vpnTunnelActive/);
-assert.match(indexSource, /@State private homeLastDownloadTotal: number = 0;/);
-assert.match(indexSource, /@State private homeTrafficBaselineReady: boolean = false;/);
+assert.match(indexSource, /private homeLastDownloadTotal: number = 0;/);
+assert.match(indexSource, /private homeTrafficBaselineReady: boolean = false;/);
 assert.match(indexSource, /return this\.vpnTunnelActive;/);
 assert.doesNotMatch(indexSource, /return this\.summary\.state === 'running' \|\| this\.controllerStatus\.available \|\| this\.vpnActionText === '断开';/);
-assert.match(indexSource, /parseRuntimeTunStatus\(configResult\.raw\)/);
-assert.match(indexSource, /controller .*已就绪 · VPN 未连接/);
-assert.match(indexSource, /readJsonNumber\(connectionsResult\.raw, 'downloadTotal'\)/);
-assert.match(indexSource, /readJsonNumber\(connectionsResult\.raw, 'uploadTotal'\)/);
-assert.match(indexSource, /sumConnectionDownload\(connections\)/);
-assert.match(indexSource, /Math\.max\(totalDownloadDelta, activeDownloadDelta\) \/ elapsedSeconds/);
-assert.match(indexSource, /liveRefreshToken/);
-assert.match(indexSource, /已连接 · \$\{version\} · \$\{connections\.length\} 连接/);
-assert.match(indexSource, /Text\(this\.modeLabel\(this\.proxyMode\)\)/);
+assert.match(indexSource, /parseRuntimeTunStatus\(result\.raw\)/);
+assert.match(indexSource, /controller 已连接：.*VPN 未连接/);
+assert.match(indexSource, /typeof data\['downloadTotal'\] === 'number'/);
+assert.match(indexSource, /typeof data\['uploadTotal'\] === 'number'/);
+assert.match(indexSource, /this\.trafficView\.connections = this\.liveConnections/);
+assert.match(indexSource, /Math\.max\(0, totalDownload - this\.homeLastDownloadTotal\) \/ elapsed/);
+assert.doesNotMatch(indexSource, /liveRefreshToken|homeRefreshIntervalId|setInterval/);
+assert.match(indexSource, /this\.connectionView\.setPhase/);
+assert.match(indexSource, /this\.ProxyModeOption\('规则', 'rule'\)/);
 assert.match(indexSource, /Text\(this\.liveProfileName\)/);
 assert.match(indexSource, /Text\(this\.liveProxyName\)/);
 assert.match(indexSource, /APP_VERSION_NAME: string = 'v0\.1\.0'/);
-assert.match(indexSource, /APP_BUILD_UPDATED_AT: string = '2026-07-08 23:18'/);
 assert.match(indexSource, /DELAY_TEST_TIMEOUT_MS: number = 4500/);
 assert.match(indexSource, /https:\/\/cp\.cloudflare\.com\/generate_204/);
 assert.match(indexSource, /http:\/\/connectivitycheck\.platform\.hicloud\.com\/generate_204/);
-assert.match(indexSource, /Text\(`版本 \$\{APP_VERSION_NAME\}`\)/);
-assert.match(indexSource, /Text\(`更新 \$\{APP_BUILD_UPDATED_AT\}`\)/);
-assert.match(indexSource, /this\.StatusLine\('实时流量'/);
+assert.match(indexSource, /Text\('版本 ' \+ APP_VERSION_NAME\)/);
+assert.match(homeCardsSource, /this\.SpeedTile\('下载', this\.traffic\.downloadSpeed/);
 assert.match(indexSource, /LocalFileImportService\.pickAndImport/);
 assert.match(indexSource, /proxySearchText/);
 assert.match(indexSource, /refreshControllerProxies/);
@@ -93,7 +92,8 @@ const ensureControllerReadySource = ensureControllerReadyBlock[0];
 assert.match(ensureControllerReadySource, /if \(this\.isRuntimeConnected\(\)\)/);
 assert.match(ensureControllerReadySource, /this\.statusMessage = `\$\{action\}：正在准备运行配置\.\.\.`;/);
 assert.match(ensureControllerReadySource, /this\.statusMessage = `\$\{action\}：正在启动测速核心\.\.\.`;/);
-assert.match(ensureControllerReadySource, /this\.coreBridgeState = CoreBridgeService\.startCore\(runtime\.configPath\);/);
+assert.match(ensureControllerReadySource, /this\.coreBridgeState = await CoreBridgeService\.startCore\(runtime\.configPath\);/);
+assert.match(indexSource, /this\.coreBridgeState = await CoreBridgeService\.stopCore\(\);\s*if \(this\.coreBridgeState\.lastError\.length > 0\)/);
 assert.match(ensureControllerReadySource, /!this\.coreBridgeState\.running \|\| !this\.coreBridgeState\.controllerOnly/);
 assert.match(ensureControllerReadySource, /MihomoControllerService\.waitForVersion\(10,\s*500\)/);
 assert.match(ensureControllerReadySource, /await MihomoControllerService\.setMode\(this\.normalizeProxyMode\(this\.proxyMode\)\);/);
@@ -150,19 +150,20 @@ assert.match(proxyModeOptionSource, /\.onClick\(\(\) => \{ this\.changeProxyMode
 const proxyScreenBlock = indexSource.match(/private ProxyScreen\(\) \{[\s\S]*?\n  \}/);
 assert.ok(proxyScreenBlock, 'ProxyScreen should exist');
 const proxyScreenSource = proxyScreenBlock[0];
-assert.match(proxyScreenSource, /`节点列表 · \$\{this\.getVisibleProxyNodes\(\)\.length\}\/\$\{this\.proxyNodes\.length\}`/);
-assert.match(proxyScreenSource, /Text\(this\.isSpeedTesting \? '测速中' : '测速'\)/);
-assert.match(proxyScreenSource, /backgroundColor\(this\.isSpeedTesting \? '#64748B' : '#2563EB'\)/);
+assert.match(proxyScreenSource, /'节点 ' \+ this\.getVisibleProxyNodes\(\)\.length \+ ' \/ ' \+ this\.proxyNodes\.length/);
+assert.doesNotMatch(proxyScreenSource, /\bText\(this\.isSpeedTesting \? '测速中' : '测速'\)/);
+assert.match(proxyScreenSource, /accessibilityText\(this\.isSpeedTesting \? '测速中' : '测速'\)/);
+assert.match(proxyScreenSource, /enabled\(!this\.isSpeedTesting\)/);
 assert.match(proxyScreenSource, /if \(this\.speedTestProgress\.length > 0\)/);
 assert.match(proxyScreenSource, /ForEach\(this\.getVisibleProxyNodes\(\),/);
-assert.doesNotMatch(proxyScreenSource, /getVisibleProxyNodes\(\)\.slice|slice\(0,\s*\d+\)|this\.proxyNodes\.length > \d+/);
+assert.doesNotMatch(proxyScreenSource, /getVisibleProxyNodes\(\)\.slice|slice\(0,\s*\d+\)|this\.proxyNodes\.length > [1-9]\d*/);
 
 const proxyNodeRowBlock = indexSource.match(/private ProxyNodeRow\(node: ProxyNode\) \{[\s\S]*?\n  \}/);
 assert.ok(proxyNodeRowBlock, 'ProxyNodeRow should exist');
 const proxyNodeRowSource = proxyNodeRowBlock[0];
-assert.match(proxyNodeRowSource, /backgroundColor\(node\.selected \? '#CCFBF1' : '#FFFFFF'\)/);
-assert.match(proxyNodeRowSource, /border\(\{ width: node\.selected \? 2 : 1, color: node\.selected \? '#0F766E' : '#E2E8F0' \}\)/);
-assert.match(proxyScreenSource, /\$\{node\.name\}-\$\{node\.delay\}-\$\{node\.status \? node\.status : ''\}-\$\{node\.selected \? 'selected' : 'normal'\}/);
+assert.match(proxyNodeRowSource, /backgroundColor\(node\.selected \? AppTheme\.selectedSurface : AppTheme\.surface\)/);
+assert.match(proxyNodeRowSource, /border\(\{ width: 1, color: node\.selected \? AppTheme\.primary : AppTheme\.outline \}\)/);
+assert.match(proxyScreenSource, /node\.name \+ '-' \+ node\.delay \+ '-' \+ node\.status \+ '-' \+ node\.selected/);
 
 const runRealSpeedTestBlock = indexSource.match(/private async runRealSpeedTest\(\): Promise<void> \{[\s\S]*?\n  \}/);
 assert.ok(runRealSpeedTestBlock, 'runRealSpeedTest should exist');
@@ -195,17 +196,16 @@ assert.ok(
     measureProxyNodeDelaySource.indexOf('!this.controllerStatus.available && !this.coreBridgeState.controllerReady'),
   'proxy speed test should call MihomoControllerService.testDelay only after controller is ready'
 );
-assert.match(measureProxyNodeDelaySource, /for \(let urlIndex = 0; urlIndex < DELAY_TEST_URLS\.length; urlIndex\+\+\)/);
-assert.match(measureProxyNodeDelaySource, /MihomoControllerService\.testDelay\([\s\S]*?node\.name,[\s\S]*?DELAY_TEST_TIMEOUT_MS,[\s\S]*?DELAY_TEST_URLS\[urlIndex\]/);
+assert.match(measureProxyNodeDelaySource, /for \(let urlIndex = 0; urlIndex < testUrls\.length; urlIndex\+\+\)/);
+assert.match(measureProxyNodeDelaySource, /MihomoControllerService\.testDelay\([\s\S]*?node\.name,[\s\S]*?this\.appPreferences\.testTimeout,[\s\S]*?testUrls\[urlIndex\]/);
 assert.match(measureProxyNodeDelaySource, /if \(delay > 0\) \{[\s\S]*?return delay;/);
 assert.doesNotMatch(measureProxyNodeDelaySource, /TcpDelayTestService\.testNode\(/);
 assert.doesNotMatch(indexSource, /TcpDelayTestService\.testNode\(/);
 
-assert.match(indexSource, /await this\.verifySelectedProxyAfterConnection\(controllerReady\.version\)/);
+assert.match(indexSource, /this\.refreshAfterConnection\(restoreGroup, restoreNode, controllerReady\.version, this\.homeRefreshGeneration\)/);
 assert.match(indexSource, /private async verifySelectedProxyAfterConnection\(controllerVersion: string\): Promise<void>/);
 assert.match(indexSource, /VPN 隧道已建立，但当前节点不可达/);
-assert.match(indexSource, /private formatProxyHealthSuffix\(\): string/);
-assert.match(indexSource, /this\.formatProxyHealthSuffix\(\)/);
+assert.match(indexSource, /this\.proxyHealthOk = delay > 0/);
 
 const speedTestBlockedStateBlock = indexSource.match(/private getSpeedTestBlockedState\(targetCount: number\): SpeedTestBlockedState \| undefined \{[\s\S]*?\n  \}/);
 assert.ok(speedTestBlockedStateBlock, 'getSpeedTestBlockedState should exist');
@@ -219,7 +219,7 @@ assert.match(indexSource, /private proxyDelayCache: Record<string, ProxyDelaySta
 assert.match(indexSource, /private getCachedProxyDelayState\(name: string\): ProxyDelayState/);
 assert.match(indexSource, /return \{\s*delay: '待测',\s*status: 'pending'\s*\};/);
 assert.match(indexSource, /this\.proxyDelayCache\[update\.name\] =/);
-assert.match(indexSource, /\$\{node\.name\}-\$\{node\.delay\}-\$\{node\.status \? node\.status : ''\}-\$\{node\.selected \? 'selected' : 'normal'\}/);
+assert.match(indexSource, /node\.name \+ '-' \+ node\.delay \+ '-' \+ node\.status \+ '-' \+ node\.selected/);
 assert.doesNotMatch(indexSource, /parsed\.nodes\.length > 8 \? 8 : parsed\.nodes\.length/);
 assert.match(indexSource, /DiagnosticsConnectionSegment/);
 assert.match(indexSource, /DiagnosticsLogSegment/);
@@ -244,7 +244,7 @@ assert.ok(
 );
 
 // Verify toggleVpn has key operations in correct order
-assert.match(indexSource, /VpnService\.start\(runtime\.configPath\)/);
+assert.match(indexSource, /VpnService\.start\(runtime\.configPath, this\.sessionId\)/);
 assert.match(indexSource, /VpnService\.stop\(\)/);
 assert.match(indexSource, /MihomoControllerService\.waitForVersion\(/);
 assert.match(indexSource, /CoreBridgeService\.markControllerReady\(true,/);
@@ -253,10 +253,9 @@ assert.match(indexSource, /CoreService\.createSummary\(this\.profileState, true\
 assert.match(indexSource, /toggling = false/);
 assert.match(indexSource, /toggling = true/);
 
-// Monolithic Index.ets — all UI inline
-
-// Index.ets business logic assertions
-assert.match(indexSource, /已保存订阅：\$\{name\}，正在下载/);
+// Newly added subscriptions use the same visible update workflow and target
+// the added item rather than whichever configuration was already selected.
+assert.match(indexSource, /runProfileUpdates\(\[added\.uid\]\)/);
 
 // New service assertions
 assert.match(enhanceServiceSource, /applyMerge/);
@@ -291,12 +290,12 @@ assert.match(converterSource, /MATCH,Proxy/);
 assert.match(converterSource, /findHostPortSeparator/);
 assert.match(converterSource, /cleanHost/);
 assert.match(converterSource, /BASIC_URL_SAFE/);
-assert.match(vpnServiceSource, /startVpnExtensionAbility\(createVpnWant\(configPath\)\)/);
+assert.match(vpnServiceSource, /startVpnExtensionAbility\(createVpnWant\(configPath, sessionId\)\)/);
 assert.match(vpnServiceSource, /stopVpnExtensionAbility\(createVpnWant\(\)\)/);
 assert.match(vpnServiceSource, /protectSocket/);
 assert.match(vpnServiceSource, /nativeCore\.protectSocket/);
 assert.match(vpnExtensionSource, /CoreBridgeService\.startTun\(this\.configPath, this\.tunFd\)/);
-assert.match(vpnExtensionSource, /this\.connection\.protectProcessNet\(\)/);
+assert.match(vpnExtensionSource, /connection\.protectProcessNet\(\)/);
 assert.match(vpnExtensionSource, /VPN process network protected for native core outbound sockets/);
 assert.match(vpnExtensionSource, /CoreBridgeService\.stopTun\(\)/);
 assert.match(vpnExtensionSource, /Native core bridge started: mode=/);
@@ -336,9 +335,9 @@ assert.match(coreBridgeSource, /function fallbackControllerMarkState\(ready: boo
 assert.match(coreBridgeSource, /effectiveReady: boolean = ready/);
 assert.match(coreBridgeSource, /static markControllerReady\(ready: boolean, version: string\): CoreBridgeState/);
 assert.match(coreBridgeSource, /nativeCore\.setControllerReady\(ready, version\)/);
-assert.match(coreBridgeSource, /static startCore\(configPath: string\): CoreBridgeState/);
+assert.match(coreBridgeSource, /static async startCore\(configPath: string, timeoutMs: number = 15000\): Promise<CoreBridgeState>/);
 assert.match(coreBridgeSource, /nativeCore\.startCore\(configPath\)/);
-assert.match(coreBridgeSource, /static stopCore\(\): CoreBridgeState/);
+assert.match(coreBridgeSource, /static async stopCore\(timeoutMs: number = 10000\): Promise<CoreBridgeState>/);
 assert.match(coreBridgeSource, /nativeCore\.stopCore\(\)/);
 assert.match(coreBridgeSource, /adapterVersion: lastKnownState\.adapterVersion/);
 assert.match(coreBridgeSource, /controllerVersion: effectiveReady \? version : ''/);
@@ -376,12 +375,13 @@ assert.match(nativeSource, /"startCore"/);
 assert.match(nativeSource, /"stopCore"/);
 assert.match(nativeSource, /"setControllerReady"/);
 assert.match(nativeSource, /"getState"/);
-assert.match(nativeSource, /invalid configPath or tunFd/);
+assert.match(nativeSource, /Invalid configPath/);
+assert.match(nativeSource, /Invalid tunFd/);
 assert.match(nativeSource, /invalid controllerReady or version/);
 assert.match(nativeSource, /#include <unistd\.h>/);
 assert.match(nativeSource, /#include "mihomo_adapter\.h"/);
 assert.match(nativeSource, /dup\(tunFd\)/);
-assert.match(nativeSource, /MihomoStart\(configPath\.c_str\(\), g_state\.nativeFd\)/);
+assert.match(nativeSource, /MihomoStart\(configPath\.c_str\(\), nativeFd\)/);
 assert.match(nativeSource, /MihomoStop\(\)/);
 assert.match(nativeSource, /MihomoVersion\(\)/);
 assert.match(nativeSource, /MihomoLastError\(\)/);
@@ -402,8 +402,8 @@ assert.match(nativeSource, /std::string version/);
 assert.match(nativeSource, /"version", snapshot\.version/);
 assert.match(nativeSource, /"adapterVersion"/);
 assert.match(nativeSource, /"controllerVersion"/);
-assert.match(nativeSource, /g_state\.adapterVersion = MihomoVersion\(\)/);
-assert.match(nativeSource, /g_state\.version = g_state\.adapterVersion/);
+assert.match(nativeSource, /g_state\.adapterVersion = version/);
+assert.match(nativeSource, /g_state\.version = version/);
 assert.match(nativeSource, /g_state\.controllerReady = true/);
 assert.match(nativeSource, /g_state\.controllerReady = false/);
 assert.match(nativeSource, /g_state\.controllerVersion = version/);

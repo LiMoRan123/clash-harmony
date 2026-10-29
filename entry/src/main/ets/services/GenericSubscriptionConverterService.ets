@@ -22,22 +22,31 @@ interface ShadowsocksNode {
 
 export class GenericSubscriptionConverterService {
   static normalizeToClashYaml(rawText: string): ConvertedSubscription {
-    const trimmed: string = rawText.trim();
-    if (GenericSubscriptionConverterService.looksLikeClashYaml(trimmed)) {
-      const nodes: ParsedProxyNode[] = ClashConfigParserService.parseProxyNodes(trimmed);
-      return {
-        ok: true,
-        message: 'Clash YAML',
-        text: trimmed,
-        nodeCount: nodes.length,
-        converted: false
-      };
-    }
-
+    const trimmed: string = rawText.replace(/\r\n?/g, '\n').trim();
     const decoded: string = GenericSubscriptionConverterService.tryDecodeBase64(trimmed);
     const candidates: string[] = decoded.length > 0 ? [trimmed, decoded] : [trimmed];
     for (let index = 0; index < candidates.length; index++) {
-      const nodes: ShadowsocksNode[] = GenericSubscriptionConverterService.parseShadowsocksNodes(candidates[index]);
+      const text: string = candidates[index];
+      if (GenericSubscriptionConverterService.looksLikeHtml(text)) {
+        return GenericSubscriptionConverterService.failure('订阅服务器返回了网页或登录页，请检查订阅地址和账号状态');
+      }
+      if (GenericSubscriptionConverterService.looksLikeClashYaml(text)) {
+        const nodes: ParsedProxyNode[] = ClashConfigParserService.parseProxyNodes(text);
+        return {
+          ok: true,
+          message: index > 0 ? '已解码 Base64 Clash YAML' : 'Clash YAML',
+          text: text,
+          nodeCount: nodes.length,
+          converted: index > 0
+        };
+      }
+      const unsupported: string[] = GenericSubscriptionConverterService.unsupportedProtocols(text);
+      if (unsupported.length > 0) {
+        return GenericSubscriptionConverterService.failure(
+          `检测到 ${unsupported.join('、')} 通用节点订阅；当前通用链接转换支持 Shadowsocks，请在订阅后台选择 Clash/Mihomo 格式`
+        );
+      }
+      const nodes: ShadowsocksNode[] = GenericSubscriptionConverterService.parseShadowsocksNodes(text);
       if (nodes.length > 0) {
         return {
           ok: true,
@@ -49,9 +58,19 @@ export class GenericSubscriptionConverterService {
       }
     }
 
+    const content: string = candidates[candidates.length - 1];
+    if (content.startsWith('{') || content.startsWith('[')) {
+      return GenericSubscriptionConverterService.failure('订阅返回了 JSON 或其他配置格式，请在订阅后台选择 Clash/Mihomo YAML');
+    }
+    return GenericSubscriptionConverterService.failure(
+      trimmed.length === 0 ? '订阅内容为空' : '未识别到 Clash/Mihomo YAML 或 Shadowsocks 节点，请确认订阅输出格式'
+    );
+  }
+
+  private static failure(message: string): ConvertedSubscription {
     return {
       ok: false,
-      message: '订阅内容不是 Clash/Mihomo YAML，也未识别到可转换的 Shadowsocks 节点',
+      message: message,
       text: '',
       nodeCount: 0,
       converted: false
@@ -255,15 +274,31 @@ export class GenericSubscriptionConverterService {
   }
 
   private static looksLikeClashYaml(text: string): boolean {
-    return text.indexOf('proxies:') >= 0 ||
-      text.indexOf('proxy-providers:') >= 0 ||
-      text.indexOf('proxy-groups:') >= 0 ||
-      text.indexOf('rules:') >= 0;
+    return /^(?:proxies|proxy-providers|proxy-groups|rules|"proxies"|"proxy-providers"|"proxy-groups"|"rules"|'proxies'|'proxy-providers'|'proxy-groups'|'rules')[ \t]*:/m.test(text);
+  }
+
+  private static looksLikeHtml(text: string): boolean {
+    return /^\s*<(?:!doctype|html|head|body)\b/i.test(text) || /<\/html\s*>/i.test(text);
+  }
+
+  private static unsupportedProtocols(text: string): string[] {
+    const protocols: string[] = ['ssr', 'vmess', 'vless', 'trojan', 'hysteria', 'hysteria2', 'hy2', 'tuic', 'socks', 'socks5', 'anytls'];
+    const lines: string[] = text.toLowerCase().split('\n');
+    const found: string[] = [];
+    for (let index = 0; index < protocols.length; index++) {
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        if (lines[lineIndex].trim().startsWith(`${protocols[index]}://`)) {
+          found.push(protocols[index]);
+          break;
+        }
+      }
+    }
+    return found;
   }
 
   private static tryDecodeBase64(text: string): string {
-    const compact: string = GenericSubscriptionConverterService.padBase64(text.replace(/\r/g, '').replace(/\n/g, '').trim());
-    if (compact.length < 4 || !GenericSubscriptionConverterService.looksLikeBase64(compact)) {
+    const compact: string = GenericSubscriptionConverterService.padBase64(text.replace(/\s/g, ''));
+    if (compact.length < 4 || compact.length % 4 !== 0 || !GenericSubscriptionConverterService.looksLikeBase64(compact)) {
       return '';
     }
 

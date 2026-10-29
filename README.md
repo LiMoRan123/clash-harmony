@@ -2,9 +2,21 @@
 
 Clash Harmony 是一个 HarmonyOS / ArkTS Stage 工程，用于在鸿蒙设备上运行 Clash/mihomo 风格的代理与 VPN 工作流。当前版本已经接入真实 `arm64-v8a` mihomo native 库，支持订阅导入、节点测速、策略切换、VPN 启停、controller 诊断和首页实时状态刷新。
 
+当前维护仓库为 [LiMoRan123/clash-harmony](https://github.com/LiMoRan123/clash-harmony)。项目源自 [andycaihello/clash-harmony](https://github.com/andycaihello/clash-harmony)，保留原提交历史、GPL-3.0-only 许可证及第三方声明；后续功能以本仓库的 `dev` / `main` 为准。
+
+本轮已完成原生界面重构、配置更新加载与逐项结果、订阅兼容性修复、账号流量与到期信息、异步内核启停、生命周期事件及 WebSocket 实时数据、后台任务和诊断记录。详细说明：
+
+- [界面与配置更新](doc/ui-polish.md)
+- [订阅流量与到期信息](doc/subscription-info.md)
+- [运行状态与启动性能](doc/runtime-push-and-performance.md)
+- [后台运行与停止确认](doc/background-stability.md)
+- [独立维护与分支约定](doc/independent-maintenance.md)
+
+`main` 保存通过验证的版本，`dev` 用于开发。提交前请保留本机 DevEco 签名配置在本地，避免将签名密码、密钥和个人配置上传。
+
 ## 当前状态
 
-更新时间：2026-07-09
+更新时间：2026-10-29
 
 - 真机包名：`io.github.clashharmony.app`
 - 主入口：`EntryAbility`
@@ -67,7 +79,11 @@ Clash Harmony 是一个 HarmonyOS / ArkTS Stage 工程，用于在鸿蒙设备�
 - `GenericSubscriptionConverterService.ets`：通用订阅格式转换
 - `RuntimeConfigService.ets`：生成 mihomo 运行配置
 - `MihomoControllerService.ets`：mihomo REST controller 封装
-- `TrafficPollerService.ets`：实时流量轮询
+- `ControllerStreamService.ets`：首页 WebSocket 实时流量推送
+- `VpnRuntimeEvents.ets`：VPN 生命周期事件与阶段确认
+- `VpnBackgroundService.ets`：后台数据传输任务与取消记录
+- `SubscriptionInfoService.ets`：订阅账号流量与到期信息解析
+- `TrafficPollerService.ets`：旧兼容辅助，首页已改用推送
 - `VpnService.ets`：VPN Extension 启停入口
 - `TcpDelayTestService.ets`：节点 TCP 延迟测试
 
@@ -140,7 +156,7 @@ entry/build/default/outputs/default/entry-default-signed.hap
 
 ## Release 包
 
-仓库内提供当前签名调试包：
+`release/` 中保留了历史签名调试包，不包含此次完整改造：
 
 ```text
 release/clash-harmony-v0.1.0-20260708-2318-signed.hap
@@ -153,6 +169,8 @@ SHA256: 2c00b356d7e2a8fefe1295449951cc22a780343ffadcd8aa19daf1e9e5f92b88
 ```
 
 说明：
+
+- 当前版本请使用自己的 DevEco 签名配置构建，并通过 Run 覆盖安装；最新本机构建记录见 [订阅统计说明](doc/subscription-info.md)。
 
 - 当前版本不能上架鸿蒙应用市场，仅供个人研究、调试和技术验证使用。
 - 该 HAP 需要通过电脑和 `hdc` 安装到真机。

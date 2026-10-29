@@ -5,9 +5,12 @@
 #include "health_monitor.h"
 
 #include <cerrno>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <mutex>
+#include <new>
 #include <string>
 #include <vector>
 #include <unistd.h>
@@ -41,6 +44,13 @@ struct RuntimeState {
 std::mutex g_stateMutex;
 RuntimeState g_state;
 TunForwarder g_forwarder;
+std::atomic<bool> g_coreOperationActive {false};
+
+bool ClaimCoreOperation()
+{
+    bool expected = false;
+    return g_coreOperationActive.compare_exchange_strong(expected, true);
+}
 
 napi_value CreateString(napi_env env, const std::string& value)
 {
@@ -83,14 +93,35 @@ void CloseNativeFdLocked()
     }
 }
 
-void RefreshAdapterStateLocked()
+struct AdapterSnapshot {
+    std::string mode;
+    std::string kind;
+    std::string info;
+    std::string loadError;
+    bool supportsControllerOnly = false;
+    bool supportsTunAttach = false;
+};
+
+AdapterSnapshot ReadAdapterSnapshot()
 {
-    g_state.adapterMode = MihomoAdapterMode();
-    g_state.adapterKind = MihomoAdapterKind();
-    g_state.adapterInfo = MihomoAdapterInfo();
-    g_state.adapterLoadError = MihomoAdapterLoadError();
-    g_state.supportsControllerOnly = MihomoSupportsControllerOnly();
-    g_state.supportsTunAttach = MihomoSupportsTunAttach();
+    AdapterSnapshot snapshot;
+    snapshot.mode = MihomoAdapterMode();
+    snapshot.kind = MihomoAdapterKind();
+    snapshot.info = MihomoAdapterInfo();
+    snapshot.loadError = MihomoAdapterLoadError();
+    snapshot.supportsControllerOnly = MihomoSupportsControllerOnly();
+    snapshot.supportsTunAttach = MihomoSupportsTunAttach();
+    return snapshot;
+}
+
+void ApplyAdapterSnapshotLocked(const AdapterSnapshot& snapshot)
+{
+    g_state.adapterMode = snapshot.mode;
+    g_state.adapterKind = snapshot.kind;
+    g_state.adapterInfo = snapshot.info;
+    g_state.adapterLoadError = snapshot.loadError;
+    g_state.supportsControllerOnly = snapshot.supportsControllerOnly;
+    g_state.supportsTunAttach = snapshot.supportsTunAttach;
 }
 
 napi_value CreateStateObject(napi_env env)
@@ -155,22 +186,17 @@ bool ReadStringArg(napi_env env, napi_value value, std::string& output)
     return true;
 }
 
-napi_value StartTun(napi_env env, napi_callback_info info)
+void RunStartTun(const std::string& configPath, int32_t tunFd, int32_t& duplicateFd)
 {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr, nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    std::string configPath;
-    int32_t tunFd = -1;
-    bool ok = argc >= 2 && ReadStringArg(env, args[0], configPath) &&
-              napi_get_value_int32(env, args[1], &tunFd) == napi_ok;
-
     {
         std::lock_guard<std::mutex> lock(g_stateMutex);
+        CloseNativeFdLocked();
         g_state.startCount += 1;
         g_state.configPath = configPath;
         g_state.tunFd = tunFd;
+        g_state.nativeFd = duplicateFd;
+        duplicateFd = -1;
+        g_state.running = false;
         g_state.controllerReady = false;
         g_state.controllerOnly = false;
         g_state.tunAttached = false;
@@ -178,64 +204,88 @@ napi_value StartTun(napi_env env, napi_callback_info info)
         g_state.adapterVersion.clear();
         g_state.controllerVersion.clear();
         g_state.version.clear();
-        RefreshAdapterStateLocked();
-
-        CloseNativeFdLocked();
-        if (!ok || configPath.empty() || tunFd < 0) {
-            g_state.running = false;
-            g_state.coreMode = "error";
-            g_state.lastError = "invalid configPath or tunFd";
-        } else {
-            int32_t duplicateFd = dup(tunFd);
-            if (duplicateFd < 0) {
-                g_state.running = false;
-                g_state.coreMode = "error";
-                g_state.lastError = std::string("dup tunFd failed: ") + strerror(errno);
-            } else {
-                g_state.nativeFd = duplicateFd;
-                int startResult = MihomoStart(configPath.c_str(), g_state.nativeFd);
-                if (startResult == 0) {
-                    g_state.running = true;
-                    g_state.controllerOnly = false;
-                    g_state.tunAttached = true;
-                    RefreshAdapterStateLocked();
-                    g_state.adapterVersion = MihomoVersion();
-                    g_state.version = g_state.adapterVersion;
-                    g_state.lastError.clear();
-                    if (g_state.adapterMode == "real" && g_state.adapterKind == "mihomo") {
-                        // 真实 mihomo adapter 已加载，由 adapter 自行处理 TUN I/O
-                        g_state.coreMode = "mihomo-adapter";
-                        g_state.realConnectionReady = true;
-                    } else {
-                        // stub 模式：启动内建转发器处理 TUN I/O
-                        g_state.coreMode = "adapter-stub";
-                        g_state.realConnectionReady = false;
-                        g_forwarder.Start(g_state.nativeFd, nullptr, SocketProtector::Protect);
-                    }
-                } else {
-                    CloseNativeFdLocked();
-                    g_state.running = false;
-                    g_state.controllerOnly = false;
-                    g_state.tunAttached = false;
-                    g_state.realConnectionReady = false;
-                    RefreshAdapterStateLocked();
-                    g_state.coreMode = "error";
-                    g_state.lastError = MihomoLastError();
-                }
-            }
-        }
+        g_state.coreMode = "starting";
+        g_state.lastError.clear();
     }
-
-    return CreateStateObject(env);
-}
-
-napi_value StopTun(napi_env env, napi_callback_info info)
-{
-    (void)info;
+    int32_t nativeFd;
     {
         std::lock_guard<std::mutex> lock(g_stateMutex);
-        g_forwarder.Stop();
-        MihomoStop();
+        nativeFd = g_state.nativeFd;
+    }
+    const int result = MihomoStart(configPath.c_str(), nativeFd);
+    const AdapterSnapshot adapter = ReadAdapterSnapshot();
+    const std::string version = result == 0 ? MihomoVersion() : "";
+    const std::string error = result == 0 ? "" : MihomoLastError();
+    const bool real = result == 0 && adapter.mode == "real" && adapter.kind == "mihomo";
+    if (result == 0 && !real) {
+        g_forwarder.Start(nativeFd, nullptr, SocketProtector::Protect);
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        ApplyAdapterSnapshotLocked(adapter);
+        g_state.running = result == 0;
+        g_state.tunAttached = result == 0;
+        g_state.realConnectionReady = real;
+        g_state.adapterVersion = version;
+        g_state.version = version;
+        g_state.coreMode = result != 0 ? "error" : real ? "mihomo-adapter" : "adapter-stub";
+        g_state.lastError = error;
+        if (result != 0) {
+            CloseNativeFdLocked();
+        }
+    }
+}
+
+void RunStartCore(const std::string& configPath)
+{
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        g_state.startCount += 1;
+        g_state.configPath = configPath;
+        g_state.tunFd = -1;
+        g_state.controllerReady = false;
+        g_state.controllerOnly = false;
+        g_state.tunAttached = false;
+        g_state.realConnectionReady = false;
+        g_state.adapterVersion.clear();
+        g_state.controllerVersion.clear();
+        g_state.version.clear();
+        CloseNativeFdLocked();
+        g_state.running = false;
+        g_state.coreMode = "starting";
+        g_state.lastError.clear();
+    }
+
+    // Core loading, Go initialization and adapter getters can block. None of them
+    // may hold the UI-visible state mutex or execute on the ArkTS event loop.
+    int startResult = MihomoStartCore(configPath.c_str());
+    const std::string error = startResult == 0 ? "" : MihomoLastError();
+    const std::string version = startResult == 0 ? MihomoVersion() : "";
+    const AdapterSnapshot adapter = ReadAdapterSnapshot();
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        ApplyAdapterSnapshotLocked(adapter);
+        g_state.running = startResult == 0;
+        g_state.controllerOnly = startResult == 0;
+        g_state.adapterVersion = version;
+        g_state.version = g_state.controllerReady ? g_state.controllerVersion : version;
+        g_state.coreMode = startResult == 0 ? "mihomo-controller" : "error";
+        g_state.lastError = error;
+    }
+}
+
+void RunStopCore()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        g_state.coreMode = "stopping";
+    }
+    g_forwarder.Stop();
+    int stopResult = MihomoStop();
+    const std::string error = stopResult == 0 ? "" : MihomoLastError();
+    const AdapterSnapshot adapter = ReadAdapterSnapshot();
+    {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
         CloseNativeFdLocked();
         g_state.running = false;
         g_state.tunFd = -1;
@@ -246,90 +296,164 @@ napi_value StopTun(napi_env env, napi_callback_info info)
         g_state.adapterVersion.clear();
         g_state.controllerVersion.clear();
         g_state.version.clear();
-        RefreshAdapterStateLocked();
-        g_state.coreMode = "stopped";
+        ApplyAdapterSnapshotLocked(adapter);
+        g_state.coreMode = stopResult == 0 ? "stopped" : "error";
+        g_state.lastError = error;
         g_state.stopCount += 1;
     }
-    return CreateStateObject(env);
+}
+
+struct CoreAsyncWork {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string configPath;
+    std::string error;
+    bool start = false;
+    bool tun = false;
+    int32_t tunFd = -1;
+    int32_t duplicateFd = -1;
+};
+
+void RejectCorePromise(napi_env env, napi_deferred deferred, const char* code, const std::string& message)
+{
+    napi_value error = nullptr;
+    napi_create_error(env, CreateString(env, code), CreateString(env, message), &error);
+    napi_reject_deferred(env, deferred, error);
+}
+
+void ExecuteCoreWork(napi_env env, void* data)
+{
+    (void)env;
+    auto* operation = static_cast<CoreAsyncWork*>(data);
+    try {
+        if (operation->start && operation->tun) {
+            RunStartTun(operation->configPath, operation->tunFd, operation->duplicateFd);
+        } else if (operation->start) {
+            RunStartCore(operation->configPath);
+        } else {
+            RunStopCore();
+        }
+    } catch (const std::exception& error) {
+        operation->error = error.what();
+    } catch (...) {
+        operation->error = "Unknown native core exception";
+    }
+    if (!operation->error.empty()) {
+        std::lock_guard<std::mutex> lock(g_stateMutex);
+        g_state.running = false;
+        g_state.controllerOnly = false;
+        g_state.coreMode = "error";
+        g_state.lastError = operation->error;
+    }
+}
+
+void CompleteCoreWork(napi_env env, napi_status status, void* data)
+{
+    auto* operation = static_cast<CoreAsyncWork*>(data);
+    g_coreOperationActive.store(false);
+    if (operation->duplicateFd >= 0) {
+        close(operation->duplicateFd);
+    }
+    if (status != napi_ok || !operation->error.empty()) {
+        RejectCorePromise(env, operation->deferred, "CORE_OPERATION_FAILED",
+                          operation->error.empty() ? "Native core task was canceled" : operation->error);
+    } else {
+        napi_resolve_deferred(env, operation->deferred, CreateStateObject(env));
+    }
+    napi_delete_async_work(env, operation->work);
+    delete operation;
+}
+
+napi_value QueueCoreWork(napi_env env, napi_callback_info info, bool start, bool tun = false)
+{
+    napi_deferred deferred = nullptr;
+    napi_value promise = nullptr;
+    if (napi_create_promise(env, &deferred, &promise) != napi_ok) {
+        napi_throw_error(env, "CORE_ASYNC_INIT", "Unable to create native core Promise");
+        return nullptr;
+    }
+
+    std::string configPath;
+    int32_t tunFd = -1;
+    if (start) {
+        size_t argc = tun ? 2 : 1;
+        napi_value args[2] = {nullptr, nullptr};
+        napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+        if (argc < 1 || !ReadStringArg(env, args[0], configPath) || configPath.empty()) {
+            RejectCorePromise(env, deferred, "CORE_INVALID_CONFIG", "Invalid configPath");
+            return promise;
+        }
+        if (tun && (argc < 2 || napi_get_value_int32(env, args[1], &tunFd) != napi_ok || tunFd < 0)) {
+            RejectCorePromise(env, deferred, "CORE_INVALID_TUN", "Invalid tunFd");
+            return promise;
+        }
+    }
+    if (!ClaimCoreOperation()) {
+        RejectCorePromise(env, deferred, "CORE_BUSY", "Native core operation is in progress; please wait");
+        return promise;
+    }
+
+    auto* operation = new (std::nothrow) CoreAsyncWork();
+    if (operation == nullptr) {
+        g_coreOperationActive.store(false);
+        RejectCorePromise(env, deferred, "CORE_ASYNC_INIT", "Unable to allocate native core task");
+        return promise;
+    }
+    operation->deferred = deferred;
+    operation->configPath = configPath;
+    operation->start = start;
+    operation->tun = tun;
+    operation->tunFd = tunFd;
+    if (tun) {
+        operation->duplicateFd = dup(tunFd);
+        if (operation->duplicateFd < 0) {
+            const std::string error = std::string("dup tunFd failed: ") + strerror(errno);
+            delete operation;
+            g_coreOperationActive.store(false);
+            RejectCorePromise(env, deferred, "CORE_INVALID_TUN", error);
+            return promise;
+        }
+    }
+    napi_value name = CreateString(env, start ? "ClashCoreStart" : "ClashCoreStop");
+    napi_status status = napi_create_async_work(env, nullptr, name, ExecuteCoreWork, CompleteCoreWork,
+                                               operation, &operation->work);
+    if (status == napi_ok) {
+        status = napi_queue_async_work(env, operation->work);
+    }
+    if (status != napi_ok) {
+        if (operation->work != nullptr) {
+            napi_delete_async_work(env, operation->work);
+        }
+        g_coreOperationActive.store(false);
+        if (operation->duplicateFd >= 0) {
+            close(operation->duplicateFd);
+        }
+        delete operation;
+        RejectCorePromise(env, deferred, "CORE_ASYNC_INIT", "Unable to queue native core task");
+    }
+    return promise;
+}
+
+napi_value StartTun(napi_env env, napi_callback_info info)
+{
+    return QueueCoreWork(env, info, true, true);
 }
 
 napi_value StartCore(napi_env env, napi_callback_info info)
 {
-    size_t argc = 1;
-    napi_value args[1] = {nullptr};
-    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-
-    std::string configPath;
-    bool ok = argc >= 1 && ReadStringArg(env, args[0], configPath);
-
-    {
-        std::lock_guard<std::mutex> lock(g_stateMutex);
-        g_state.startCount += 1;
-        g_state.configPath = configPath;
-        g_state.tunFd = -1;
-        g_state.controllerReady = false;
-        g_state.controllerOnly = false;
-        g_state.tunAttached = false;
-        g_state.realConnectionReady = false;
-        g_state.adapterVersion.clear();
-        g_state.controllerVersion.clear();
-        g_state.version.clear();
-        CloseNativeFdLocked();
-        RefreshAdapterStateLocked();
-
-        if (!ok || configPath.empty()) {
-            g_state.running = false;
-            g_state.coreMode = "error";
-            g_state.lastError = "invalid configPath";
-        } else {
-            int startResult = MihomoStartCore(configPath.c_str());
-            if (startResult == 0) {
-                g_state.running = true;
-                g_state.controllerOnly = true;
-                g_state.tunAttached = false;
-                g_state.realConnectionReady = false;
-                RefreshAdapterStateLocked();
-                g_state.adapterVersion = MihomoVersion();
-                g_state.version = g_state.adapterVersion;
-                g_state.coreMode = "mihomo-controller";
-                g_state.lastError.clear();
-            } else {
-                g_state.running = false;
-                g_state.controllerOnly = false;
-                g_state.tunAttached = false;
-                g_state.realConnectionReady = false;
-                RefreshAdapterStateLocked();
-                g_state.coreMode = "error";
-                g_state.lastError = MihomoLastError();
-            }
-        }
-    }
-
-    return CreateStateObject(env);
+    return QueueCoreWork(env, info, true);
 }
 
 napi_value StopCore(napi_env env, napi_callback_info info)
 {
-    (void)info;
-    {
-        std::lock_guard<std::mutex> lock(g_stateMutex);
-        g_forwarder.Stop();
-        MihomoStop();
-        CloseNativeFdLocked();
-        g_state.running = false;
-        g_state.tunFd = -1;
-        g_state.controllerReady = false;
-        g_state.controllerOnly = false;
-        g_state.tunAttached = false;
-        g_state.realConnectionReady = false;
-        g_state.adapterVersion.clear();
-        g_state.controllerVersion.clear();
-        g_state.version.clear();
-        RefreshAdapterStateLocked();
-        g_state.coreMode = "stopped";
-        g_state.stopCount += 1;
-    }
-    return CreateStateObject(env);
+    return QueueCoreWork(env, info, false);
+}
+
+napi_value StopTun(napi_env env, napi_callback_info info)
+{
+    // TUN shutdown can wait on Go workers and must not block the ArkTS lifecycle
+    // callback. Both controller and TUN shutdown use the same serialized cleanup.
+    return QueueCoreWork(env, info, false);
 }
 
 napi_value SetControllerReady(napi_env env, napi_callback_info info)
@@ -372,10 +496,8 @@ napi_value SetControllerReady(napi_env env, napi_callback_info info)
 napi_value GetState(napi_env env, napi_callback_info info)
 {
     (void)info;
-    {
-        std::lock_guard<std::mutex> lock(g_stateMutex);
-        RefreshAdapterStateLocked();
-    }
+    // Lifecycle workers refresh the adapter snapshot. Reading state must never
+    // call into Go or contend on the adapter's initialization/shutdown lock.
     return CreateStateObject(env);
 }
 
