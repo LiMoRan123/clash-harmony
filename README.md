@@ -1,392 +1,190 @@
 # Clash Harmony
 
-Clash Harmony 是一个 HarmonyOS / ArkTS Stage 工程，用于在鸿蒙设备上运行 Clash/mihomo 风格的代理与 VPN 工作流。当前版本已经接入真实 `arm64-v8a` mihomo native 库，支持订阅导入、节点测速、策略切换、VPN 启停、controller 诊断和首页实时状态刷新。
+面向 HarmonyOS 的 Clash / mihomo 代理客户端，使用 ArkTS + ArkUI 原生界面，通过 VPN Extension 接入 Go 内核。当前主要在 ARM64 鸿蒙手机上开发和验证。
 
-当前维护仓库为 [LiMoRan123/clash-harmony](https://github.com/LiMoRan123/clash-harmony)。项目源自 [andycaihello/clash-harmony](https://github.com/andycaihello/clash-harmony)，保留原提交历史、GPL-3.0-only 许可证及第三方声明；后续功能以本仓库的 `dev` / `main` 为准。
+本项目由 [LiMoRan123/clash-harmony](https://github.com/LiMoRan123/clash-harmony) 独立维护，源自 [andycaihello/clash-harmony](https://github.com/andycaihello/clash-harmony)，保留原始提交历史、来源说明和 GPL-3.0-only 许可证。界面布局参考 FlClash 0.9.x，当前功能以本文和实际实现为准。
 
-本轮已完成原生界面重构、配置更新加载与逐项结果、订阅兼容性修复、账号流量与到期信息、异步内核启停、生命周期事件及 WebSocket 实时数据、后台任务和诊断记录。详细说明：
+> 当前应用版本为 `0.1.0`，功能说明更新于 **2026-10-29**。`release/` 安装包和 `docs/screenshots/` 截图属于早期版本，不代表当前界面与功能；体验当前版本请从源码构建。
 
-- [界面与配置更新](doc/ui-polish.md)
-- [订阅流量与到期信息](doc/subscription-info.md)
-- [运行状态与启动性能](doc/runtime-push-and-performance.md)
-- [后台运行与停止确认](doc/background-stability.md)
-- [独立维护与分支约定](doc/independent-maintenance.md)
+## 功能
 
-`main` 保存通过验证的版本，`dev` 用于开发。提交前请保留本机 DevEco 签名配置在本地，避免将签名密码、密钥和个人配置上传。
+应用采用「仪表盘 / 代理 / 配置 / 工具」四个页面，支持跟随系统、浅色和深色主题。
 
-## 当前状态
+| 页面 | 已实现能力 |
+| --- | --- |
+| 仪表盘 | VPN 启停与阶段反馈、运行时长、活跃连接数、实时上传/下载速度与趋势、规则/全局/直连模式、当前配置与代理策略、手动查询出口 IP |
+| 代理 | 策略组与节点选择、搜索、原顺序/名称/延迟排序、单列/双列布局、同步运行中的策略组、节点延迟测试及进度 |
+| 配置 | 订阅链接、剪贴板及本地文件导入，单个/批量更新，加载动画、逐项结果与失败重试，启用、编辑、导出和删除 |
+| 工具 | 活跃连接、分流规则、DNS 配置、应用运行日志及导出，外观、网络和延迟测试设置，完整备份与恢复、关于信息 |
 
-更新时间：2026-10-29
+### 订阅与配置
 
-- 真机包名：`io.github.clashharmony.app`
-- 主入口：`EntryAbility`
-- VPN 扩展：`ClashVpnExtensionAbility`
-- 已接入真实 `arm64-v8a/libmihomo_ohos.so`
-- 已打包 `arm64-v8a/libmihomo_exec.so` 作为 mihomo 执行 fallback
-- `x86_64` 仍使用内置 fake/stub adapter，主要用于模拟器界面与构建验证
-- 真机验证过 VPN 可建立，controller 端口、TUN 网卡和代理访问链路可用
-- 首页状态刷新已修复：连接状态、运行时长、下载/上传速度、连接数、当前链路会直接绑定 live 状态刷新
-- 当前未上架鸿蒙应用市场，仅通过 HAP 包研究、调试和验证
-- 开源许可：`GPL-3.0-only`，详见 [LICENSE](LICENSE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- 支持 Clash / mihomo YAML，以及可解析的 Base64 包装内容；可转换 Shadowsocks 通用订阅。
+- 支持响应内容规范化与校验，更新失败时保留已有配置；更新正在使用的配置后，重新连接使新配置生效。
+- 配置页展示服务商返回的已用、总量、剩余流量与到期信息，数据随订阅更新并保存到本地。
+- 流量与到期信息依赖服务商的 `Subscription-Userinfo` 响应头。未提供时显示相应提示；这里是账号累计统计，与仪表盘的本机实时流量不同。
+- 备份包含配置内容、订阅信息和应用偏好；恢复前需断开 VPN，并在界面确认。
 
-## 功能清单
+节点测试测量的是延迟，不是下载带宽。`REJECT` 是拦截策略，不作为普通节点测速。
 
-### 首页
+### 运行状态与通信
 
-- VPN 连接/断开圆形主按钮
-- 左上角连接状态：`未连接` / `已连接`
-- 右上角运行时长：秒级刷新，60 秒内显示 `Xs`
-- 下载速度、上传速度、连接数实时展示
-- 运行模式切换：规则 / 全局 / 直连
-- 当前链路展示：配置名、模式、策略组、运行配置状态
-- 最近状态：配置状态、运行配置、核心状态、实时流量
+- 连接状态与实时流量分别维护，减少高频数据更新对整页的影响。
+- VPN Extension 通过系统事件反馈启动、运行、停止等阶段，界面不再等待首页定时请求才更新状态。
+- 运行数据使用 mihomo WebSocket 连接快照推送，替代首页 HTTP 定时轮询；订阅下载、策略操作、启动探测和恢复状态仍按需使用 HTTP。
+- 原生内核启停通过异步 NAPI 工作任务执行，避免在界面线程同步等待 Go 内核。
+- 接入后台数据传输任务、会话核对和停止确认，并记录任务取消及运行异常，方便排查后台断开。
 
-### 代理页
+实现与验证范围见 [状态推送与性能](doc/runtime-push-and-performance.md)、[后台运行](doc/background-stability.md) 和 [停止流程](doc/vpn-disconnect.md)。
 
-- 展示订阅解析出的全部节点
-- 支持搜索节点
-- 支持同步 controller 策略组
-- 支持节点选择并写入 mihomo controller
-- 支持全量测速，状态直接展示在每个节点后面
-- 测速中有 UI 反馈和进度文本
+## 开始使用
 
-### 配置页
+### 开发环境
 
-- 支持远程订阅导入
-- 支持剪贴板导入
-- 支持本地 YAML / 文本文件导入
-- 支持订阅更新、启用、删除
-- 支持 Shadowsocks 通用订阅转换
-- 支持 runtime YAML 生成
-- 支持 hosts 预解析、DNS 配置注入、IPv6 关闭等运行配置修正
+- DevEco Studio、HarmonyOS SDK 及其配套 Node.js、JBR 和 Native 工具链。
+- 当前工程配置为 HarmonyOS `5.0.0(12)`；实际能否安装还取决于设备系统、SDK 与签名配置。
+- ARM64 真机用于实际 VPN 验证。`x86_64` 使用 fake/stub adapter，主要用于界面和构建验证。
+- 本机配置 DevEco 签名，并将测试设备加入对应调试配置。
 
-### 诊断页
-
-- controller `/version`、`/configs`、`/proxies`、`/connections`、`/rules` 检查
-- native adapter 状态展示
-- TUN fd、native fd、controllerReady、adapterVersion、lastError 展示
-- VPN TUN 转发统计展示
-- runtime 配置、DNS、规则、连接列表查看
-
-## 技术实现
-
-### ArkTS 层
-
-- `Index.ets`：当前主 UI 与运行状态编排
-- `ProfileStore.ets`：配置持久化
-- `SubscriptionService.ets`：订阅更新
-- `ClashConfigParserService.ets`：Clash YAML 解析
-- `GenericSubscriptionConverterService.ets`：通用订阅格式转换
-- `RuntimeConfigService.ets`：生成 mihomo 运行配置
-- `MihomoControllerService.ets`：mihomo REST controller 封装
-- `ControllerStreamService.ets`：首页 WebSocket 实时流量推送
-- `VpnRuntimeEvents.ets`：VPN 生命周期事件与阶段确认
-- `VpnBackgroundService.ets`：后台数据传输任务与取消记录
-- `SubscriptionInfoService.ets`：订阅账号流量与到期信息解析
-- `TrafficPollerService.ets`：旧兼容辅助，首页已改用推送
-- `VpnService.ets`：VPN Extension 启停入口
-- `TcpDelayTestService.ets`：节点 TCP 延迟测试
-
-### Native 层
-
-- `napi_init.cpp`：NAPI 入口
-- `mihomo_adapter.cpp`：动态加载 `libmihomo_ohos.so`
-- `tun_forwarder.cpp`：TUN 转发循环
-- `socket_protector.cpp`：socket 防环路保护
-- `health_monitor.cpp`：native 健康监控
-
-真实 mihomo adapter 需要导出以下 C ABI：
-
-```text
-MihomoStart
-MihomoStop
-MihomoVersion
-MihomoLastError
-```
-
-当前真实库位置：
-
-```text
-entry/src/main/cpp/prebuilt/arm64-v8a/libmihomo_ohos.so
-entry/src/main/cpp/prebuilt/arm64-v8a/libmihomo_exec.so
-```
-
-## 项目结构
-
-```text
-AppScope/
-entry/
-  src/main/
-    cpp/
-      fake_mihomo/
-      prebuilt/
-        arm64-v8a/
-          libmihomo_ohos.so
-          libmihomo_exec.so
-      health_monitor.cpp
-      mihomo_adapter.cpp
-      napi_init.cpp
-      socket_protector.cpp
-      tun_forwarder.cpp
-    ets/
-      components/
-      entryability/
-      models/
-      pages/
-      services/
-      vpnextensionability/
-    module.json5
-docs/
-tests/
-```
-
-## 构建
-
-推荐使用 DevEco Studio 自带的 hvigor wrapper：
+获取代码：
 
 ```bash
-/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw assembleHap --mode module -p module=entry@default -p product=default
+git clone https://github.com/LiMoRan123/clash-harmony.git
+cd clash-harmony
+git switch dev
 ```
 
-构建产物：
+在 DevEco 中打开工程，完成依赖同步和签名配置，选择手机后使用 **Run（▶）** 安装。验证日常连接时，建议从手机桌面启动应用；Native Debug 曾出现 Go `SIGURG` 信号使调试器暂停线程的情况，详见 [启动与调试记录](doc/startup-and-performance.md)。
+
+首次使用：
+
+1. 在「配置」页添加订阅，或通过剪贴板、本地文件导入配置。
+2. 更新订阅并启用配置，在「代理」页选择策略或节点；按需点击测速图标。
+3. 回到「仪表盘」点击连接，按系统提示允许 VPN。
+4. 在「工具」查看连接和日志；网络设置、当前配置内容等运行参数修改后，重新连接生效。
+
+### 命令行构建
+
+以下为当前 macOS 开发环境使用的路径，其他安装位置需相应调整：
+
+```bash
+env NODE_HOME=/Applications/DevEco-Studio.app/Contents/tools/node \
+  JAVA_HOME=/Applications/DevEco-Studio.app/Contents/jbr/Contents/Home \
+  DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk \
+  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw \
+  assembleHap --mode module -p module=entry@default -p product=default \
+  -p buildMode=debug --no-daemon
+```
+
+配置有效签名后，生成的安装包位于：
 
 ```text
 entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-## Release 包
+调试签名与设备授权有关，仓库内历史签名包不能保证安装到其他设备。本机签名材料、密码与个人订阅不要提交到仓库。
 
-`release/` 中保留了历史签名调试包，不包含此次完整改造：
+### 使用 HDC 安装
 
-```text
-release/clash-harmony-v0.1.0-20260708-2318-signed.hap
-```
-
-校验值：
-
-```text
-SHA256: 2c00b356d7e2a8fefe1295449951cc22a780343ffadcd8aa19daf1e9e5f92b88
-```
-
-说明：
-
-- 当前版本请使用自己的 DevEco 签名配置构建，并通过 Run 覆盖安装；最新本机构建记录见 [订阅统计说明](doc/subscription-info.md)。
-
-- 当前版本不能上架鸿蒙应用市场，仅供个人研究、调试和技术验证使用。
-- 该 HAP 需要通过电脑和 `hdc` 安装到真机。
-- 首次启动 VPN 时，系统会弹出 VPN 权限确认，需要在手机上手动允许。
-- 请仅导入你有权使用的订阅或本地配置。
-
-## 如何获得有效订阅文件
-
-Clash Harmony 本身不提供代理节点或订阅服务。用户需要自行准备合法、可用、且有权使用的 Clash/mihomo 兼容订阅。
-
-常见获取方式：
-
-- 从你购买或自建的网络代理服务后台获取。通常服务后台会提供“Clash 订阅”、“Clash Meta 订阅”、“mihomo 订阅”或“复制订阅链接”入口。
-- 从企业、学校或实验环境的内部网络管理员处获取。此类配置通常用于内部网络访问、研发测试或合规的远程接入。
-- 自建服务后生成配置。你可以在自己的服务器上部署有权限使用的代理服务，再生成 Clash/mihomo YAML 配置文件。
-- 使用已有的本地 Clash/mihomo 配置文件。如果你已经在电脑端 Clash 客户端里有可用配置，可以导出或找到对应 YAML 文件后导入本 App。
-
-订阅通常有两种形式：
-
-```text
-https://example.com/subscription/your-token
-```
-
-或本地 YAML 文件：
-
-```yaml
-proxies:
-  - name: example-node
-    type: ss
-    server: example.com
-    port: 8388
-    cipher: aes-128-gcm
-    password: your-password
-proxy-groups:
-  - name: Proxy
-    type: select
-    proxies:
-      - example-node
-rules:
-  - MATCH,Proxy
-```
-
-判断订阅是否适合导入：
-
-- 后台明确标注支持 `Clash`、`Clash Meta` 或 `mihomo`。
-- 链接打开后返回的是 YAML 配置，或返回可被转换为 Clash 节点列表的订阅文本。
-- 配置里至少包含 `proxies` 或可解析的节点信息。
-- 节点在其他 Clash/mihomo 客户端中可以正常测速和连接。
-
-安全注意事项：
-
-- 不要使用公开泄露、来历不明或未经授权的订阅链接。
-- 订阅 URL 通常包含 token，等同于账号凭证，不要提交到 GitHub、截图公开或分享给他人。
-- 不要把个人订阅写进仓库、日志或 issue。
-- 如果订阅节点大面积 `timeout`，先确认手机当前网络、运营商线路、订阅是否过期、节点是否在其他客户端可用。
-- 请遵守所在地区法律法规、网络服务条款和组织安全规范。
-
-## 安装到真机
-
-### 准备手机
-
-1. 在手机上打开开发者模式。通常路径是“设置 -> 关于手机”，连续点击版本号或系统版本号直到提示已进入开发者模式。
-2. 打开 USB 调试 / HDC 调试。不同 HarmonyOS 版本入口可能略有差异，通常在“设置 -> 系统和更新 -> 开发人员选项”里。
-3. 使用 USB 连接手机和电脑，并在手机弹窗中允许调试授权。
-4. 电脑需安装 DevEco Studio 或 OpenHarmony/HarmonyOS SDK，确保能使用 `hdc`。
-
-查看设备是否已连接：
+先在手机开启开发者调试并完成 USB 授权，查看设备：
 
 ```bash
 HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
-$HDC list targets
+"$HDC" list targets
 ```
 
-如果输出类似下面内容，说明设备已连接：
-
-```text
-63Q0226113009373
-```
-
-### 使用脚本安装
-
-仓库提供安装脚本：
+将下面的 `your-device-serial` 替换为实际设备序列号，使用本次构建的包安装：
 
 ```bash
-chmod +x release/install-to-device.sh
-./release/install-to-device.sh
+HAP=entry/build/default/outputs/default/entry-default-signed.hap \
+  bash release/install-to-device.sh your-device-serial
 ```
 
-如果连接了多台设备，需要指定设备序列号：
+脚本默认的 HDC 路径与上面一致，其他路径可通过环境变量 `HDC` 指定。**这里必须显式指定 `HAP`**，因为该历史脚本的默认包仍是 `release/` 中的旧版本。
 
-```bash
-./release/install-to-device.sh <device-serial>
+## 技术结构
+
+```mermaid
+flowchart LR
+  UI[ArkUI 界面] -->|启停请求| EXT[VPN Extension]
+  EXT -->|生命周期事件| UI
+  EXT -->|异步 NAPI| CORE[C++ 适配层 / Go mihomo]
+  EXT --> TUN[系统 VPN / TUN]
+  TUN <-->|数据| CORE
+  CORE -->|WebSocket 数据| UI
+  UI -->|按需 REST 操作| CORE
 ```
 
-如果你的 `hdc` 不在默认路径，可以显式指定：
+| 目录 | 内容 |
+| --- | --- |
+| `entry/src/main/ets/pages/`、`components/` | 页面与可复用 ArkUI 组件 |
+| `entry/src/main/ets/models/`、`services/` | 界面状态、订阅、配置、运行通信与备份 |
+| `entry/src/main/ets/vpnextensionability/` | 系统 VPN 扩展与生命周期 |
+| `entry/src/main/ets/preview/` | DevEco 组件预览样例，不接入实际 VPN |
+| `entry/src/main/cpp/` | NAPI、内核适配、TUN 和 socket 保护 |
+| `entry/src/main/cpp/prebuilt/arm64-v8a/` | 当前使用的 Go 内核预编译库与执行 fallback |
+| `tests/` | 行为回归、原生桥接、打包和真机检查脚本 |
+| `doc/` | 当前改造、问题修复和维护记录 |
+| `docs/` | 早期设计、原型与历史截图 |
 
-```bash
-HDC=/path/to/hdc ./release/install-to-device.sh <device-serial>
-```
-
-默认安装的 HAP 是：
-
-```text
-release/clash-harmony-v0.1.0-20260708-2318-signed.hap
-```
-
-也可以指定其他 HAP：
-
-```bash
-HAP=/path/to/your.hap ./release/install-to-device.sh <device-serial>
-```
-
-### 手动安装
-
-```bash
-HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
-SERIAL=<device-serial>
-HAP=release/clash-harmony-v0.1.0-20260708-2318-signed.hap
-
-$HDC -t "$SERIAL" shell "aa force-stop io.github.clashharmony.app" || true
-$HDC -t "$SERIAL" install -r "$HAP"
-$HDC -t "$SERIAL" shell "aa start -a EntryAbility -b io.github.clashharmony.app"
-```
-
-安装完成后，手机上会打开 Clash Harmony。进入配置页导入订阅或本地配置后，可在代理页测速并选择节点，再回到首页连接 VPN。
+真机包名为 `io.github.clashharmony.app`，入口为 `EntryAbility`，VPN 扩展为 `ClashVpnExtensionAbility`。
 
 ## 验证
 
-基础脚本：
+在仓库根目录运行行为与原生桥接回归：
 
 ```bash
-node tests/app-flow.test.mjs
-node --check tests/app-flow.test.mjs
-node --check tests/verify-hap-contents.mjs
-node --check tests/verify-device-mihomo.mjs
+for task_test in tests/*.test.mjs; do
+  node "$task_test" || exit 1
+done
 ```
 
-HAP 内容校验：
+这些测试需要 Node.js；部分 ArkTS 服务测试依赖 DevEco SDK 内的 TypeScript，原生测试需要 C++ 编译器及 Node-API 头文件。SDK 安装位置不同时可设置 `ARKTS_TYPESCRIPT_PATH`，Node 头文件位置可设置 `NODE_INCLUDE_DIR`。
+
+构建后校验 ARM64 安装包内容与内核打包：
 
 ```bash
-node tests/verify-hap-contents.mjs entry/build/default/outputs/default/entry-default-signed.hap
-```
-
-真实 mihomo ABI 校验：
-
-```bash
-node tests/verify-mihomo-prebuilt-abi.mjs --require-abi arm64-v8a
+node tests/verify-hap-contents.mjs \
+  entry/build/default/outputs/default/entry-default-signed.hap \
+  --require-abi arm64-v8a --evidence-dir artifacts/hap-check
 node tests/verify-mihomo-prebuilt-packaging.mjs --require-abi arm64-v8a
 ```
 
-真机 mihomo 验收：
+安装并从桌面打开应用后，可运行以下真机检查；在 45 秒观察期间手动连接 VPN，脚本采集启动日志和 controller 状态。这里跳过重复安装与启动，多台设备连接时另加 `--serial` 指定目标：
 
 ```bash
-node tests/verify-device-mihomo.mjs --observe-ms 45000 --evidence-dir artifacts/mihomo-device
+HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc \
+  node tests/verify-device-mihomo.mjs \
+  --no-install --no-launch --observe-ms 45000 \
+  --evidence-dir artifacts/mihomo-device
 ```
 
-如果 `hdc` 不在 PATH，可使用环境变量：
+2026-10-29 的功能整理已通过 11 组 `*.test.mjs` 回归、HarmonyOS debug 签名构建、ARM64 HAP 内容和内核打包检查。用户真机反馈已验证订阅更新、显示节点及基本 VPN 访问；这些结果不代表所有设备兼容性、长期后台稳定性或耗电均已验证。
 
-```bash
-HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc node tests/verify-device-mihomo.mjs --observe-ms 45000
-```
+## 当前边界
 
-## controller 验证
+- 优先使用服务商提供的 Clash / mihomo YAML。原始 URI 订阅转换目前主要覆盖 Shadowsocks，不能把所有 VMess、VLESS、Trojan 等 URI 列表直接当作已支持；YAML 内的协议支持由当前内核决定。
+- 当前系统 TUN 配置以 IPv4 为主，界面中的 IPv6 配置项不代表已完成 IPv6 VPN 全链路支持。
+- 后台存活仍受系统策略、用户清理和任务取消影响，长时间运行、待机耗电及更多机型适配仍需真机测试。
+- 「运行日志」记录应用的连接、订阅、测速与生命周期事件，尚未接入完整 mihomo 实时日志流。
+- 尚未实现分应用代理、二维码导入、WebDAV 同步等完整客户端功能；当前也未发布应用市场版本。
+- 当前内核使用仓库中的预编译产物。对应源码版本与可复现构建流程仍需补齐，现阶段未重新编译、裁剪或升级 Go 内核；产物来源记录见 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
-VPN 启动后，可通过 hdc 端口转发验证 mihomo controller 与 HTTP 代理：
+## 说明文档
 
-```bash
-HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
-SERIAL=<device-serial>
-
-$HDC -t "$SERIAL" fport tcp:29092 tcp:9090
-$HDC -t "$SERIAL" fport tcp:27890 tcp:7890
-
-curl http://127.0.0.1:29092/version
-curl http://127.0.0.1:29092/connections
-curl -x http://127.0.0.1:27890 https://www.gstatic.com/generate_204 -I
-```
-
-## 当前限制
-
-- 真机 VPN 权限弹窗仍需要系统确认。
-- 自动化 UI 验证容易受真机锁屏影响；关键链路以 controller、TUN、HAP 内容和日志验证为主。
-- `x86_64` 未接入真实 mihomo 库，模拟器主要用于界面和构建验证。
-- DevEco / HarmonyOS SDK 版本差异可能产生 ArkTS deprecation warning，目前不影响构建。
-
-## 相关文档
-
-- [开源许可证](LICENSE)
-- [第三方声明](THIRD_PARTY_NOTICES.md)
-- [产品规划](docs/harmonyos-product-design.md)
-- [界面原型](docs/harmonyos-ui-prototype.md)
-- [mihomo native 集成计划](docs/mihomo-native-integration-plan.md)
-
-## 常用命令
-
-```bash
-# 构建
-/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw assembleHap --mode module -p module=entry@default -p product=default
-
-# HAP 内容校验
-node tests/verify-hap-contents.mjs entry/build/default/outputs/default/entry-default-signed.hap
-
-# 真机安装
-HDC=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc
-$HDC list targets
-$HDC -t <device-serial> install -r entry/build/default/outputs/default/entry-default-signed.hap
-```
-
-## 真机界面截图
-
-以下截图来自真实 HarmonyOS 手机，展示当前版本的四个主页面。
-
-| 首页 | 代理 |
+| 文档 | 内容 |
 | --- | --- |
-| <img src="docs/screenshots/real-device-home.png" width="260" alt="首页真机截图"> | <img src="docs/screenshots/real-device-proxy.png" width="260" alt="代理页真机截图"> |
+| [独立维护与分支约定](doc/independent-maintenance.md) | 仓库来源、解绑记录与 dev / main 工作流 |
+| [界面改造](doc/ui-redesign.md)、[界面细化](doc/ui-polish.md) | 原生页面、加载反馈、图标测速和配置页布局 |
+| [订阅兼容](doc/subscription-compatibility.md) | 订阅格式、解析和导入修复 |
+| [订阅流量与到期](doc/subscription-info.md) | 账号统计来源、缓存、展示与验证 |
+| [状态推送与性能](doc/runtime-push-and-performance.md) | 状态拆分、生命周期事件、WebSocket 与异步 NAPI |
+| [后台运行](doc/background-stability.md)、[停止流程](doc/vpn-disconnect.md) | 后台任务、停止确认及排查边界 |
+| [启动与调试](doc/startup-and-performance.md) | 启动耗时与 Native Debug 排查记录 |
+| [原始工程分析](doc/project-analysis.md) | 改造前的工程基线，历史结论需结合后续记录阅读 |
 
-| 配置 | 诊断 |
-| --- | --- |
-| <img src="docs/screenshots/real-device-profiles.png" width="260" alt="配置页真机截图"> | <img src="docs/screenshots/real-device-diagnostics.png" width="260" alt="诊断页真机截图"> |
+## 维护与许可
+
+`dev` 用于日常开发，`main` 保存通过验证的版本。上游项目作为来源和按需修复参考，不自动跟随或定期整仓合并。分支操作见 [独立维护说明](doc/independent-maintenance.md)。
+
+项目遵循 [GPL-3.0-only](LICENSE)，第三方组件及预编译库说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。独立维护保留原项目与各贡献者的历史和署名。Clash Harmony 不提供代理节点、订阅账号或订阅服务。
